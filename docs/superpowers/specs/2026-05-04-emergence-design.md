@@ -1157,6 +1157,19 @@ struct CommandContext<'a> {
     should_quit: &'a mut bool,
 }
 
+enum CommandOutput {
+    Success { message: String },
+    Error { message: String },
+    Quit,
+}
+
+struct CommandMeta {
+    name: String,
+    aliases: Vec<String>,
+    description: String,
+    usage: String,
+}
+
 struct Suggestion {
     name: String,
     distance: usize,
