@@ -428,11 +428,87 @@ sequenceDiagram
 
 ## 6. 对话与上下文管理
 
+采用 **Turn** 抽象组织对话。一个 Turn = 一次用户请求到助手最终文本回复的完整往返，中间可能包含多次 LLM ↔ Tool 交互。
+
+```
+Session
+  ├── Turn 1 (completed)
+  │     ├── User: "帮我添加 greet 函数"
+  │     ├── Assistant (thinking): "我需要读取 main.rs..."
+  │     ├── Tool: read src/main.rs
+  │     ├── Tool Result: "fn main() { ... }"
+  │     ├── Assistant: "好的，已添加 greet 函数" (EndTurn)
+  │     └── completed_at = 14:30:10
+  │
+  ├── Turn 2 (completed)
+  │     ├── User: "现在添加测试"
+  │     └── ...
+  │
+  └── Turn 3 (in_progress)   ← 当前进行中
+        ├── User: "重构一下"
+        └── (assistant 流式输出中...)
+```
+
+**核心类型：**
+
+```rust
+struct Session {
+    id: SessionId,
+    alias: Option<String>,
+    turns: Vec<Turn>,
+    summary: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+struct Turn {
+    id: TurnId,
+    messages: Vec<ChatMessage>,
+    status: TurnStatus,
+    started_at: DateTime<Utc>,
+    completed_at: Option<DateTime<Utc>>,
+    usage: Usage,
+}
+
+enum TurnStatus {
+    InProgress,
+    Completed,
+}
+
+type TurnId = String;  // "turn-1", "turn-2", ...
+```
+
 ```mermaid
 classDiagram
+    class Session {
+        +id: SessionId
+        +alias: Option~String~
+        +turns: Vec~Turn~
+        +summary: Option~String~
+    }
+
+    class Turn {
+        +id: TurnId
+        +messages: Vec~ChatMessage~
+        +status: TurnStatus
+        +started_at: DateTime
+        +completed_at: Option~DateTime~
+        +usage: Usage
+    }
+
+    class TurnStatus {
+        <<enum>>
+        InProgress
+        Completed
+    }
+
     class SessionManager {
-        +push(message)
-        +compact()
+        +begin_turn(user_message) &Turn
+        +push(message) Result
+        +complete_turn() Result
+        +current_turn() Option~&Turn~
+        +turns() &[Turn]
+        +compact() Result
         +build_context() Vec~ChatMessage~
         +estimated_tokens() u32
         +save()
@@ -457,58 +533,97 @@ classDiagram
     }
 
     class Summarizer {
-        +summarize(messages) String
+        +summarize(turns) String
     }
 
+    Session *-- Turn
+    Turn --> TurnStatus
+    SessionManager --> Session
     SessionManager --> SessionStore
     SessionStore <|.. JsonFileStore
     SessionManager --> Summarizer
 ```
 
-**Compaction 策略:**
+**SessionManager 方法：**
+
+```rust
+impl SessionManager {
+    fn begin_turn(&mut self, user_message: ChatMessage) -> &Turn;
+    fn push(&mut self, message: ChatMessage) -> Result<()>;
+    fn complete_turn(&mut self) -> Result<()>;
+    fn current_turn(&self) -> Option<&Turn>;
+    fn turns(&self) -> &[Turn];
+    fn build_context(&self, system_prompt: &str, tools: &[ToolDefinition]) -> Vec<ChatMessage>;
+    fn estimated_tokens(&self) -> u32;
+    fn should_compact(&self, threshold: u32) -> bool;
+    fn compact(&mut self) -> Result<()>;
+    fn clear(&mut self);
+}
+```
+
+**ContextBuilder 展开逻辑：**
+
+```
+[SystemMessage(system_prompt + AGENTS.md + tools)]
+  → [SummaryMessage(compaction 摘要)]    (如有)
+  → Turn[0].messages[0..]               (完整展开)
+  → Turn[1].messages[0..]
+  → ...
+  → Turn[current].messages[0..]         (in_progress Turn)
+```
+
+对 LLM 而言，上下文仍是扁平的 `Vec<ChatMessage>`，Turn 仅用于内部组织结构。
+
+**Compaction 策略：**
 
 ```mermaid
 flowchart TD
     Check["estimated_tokens > 阈值的 80%?"]
     Check -->|"否"| NoOp["不处理"]
     Check -->|"是"| Compact["触发 compaction"]
-    Compact --> Extract["选取最早 N 条消息"]
-    Extract --> Summarize["调用 LLM 压缩为摘要"]
-    Summarize --> Replace["摘要插入 system prompt 后，丢弃早期消息"]
+    Compact --> Select["选取最早 K 个已完成 Turn\n(保留最近 3 个 Turn)"]
+    Select --> Summarize["调用 LLM 将这些 Turn 压缩为摘要"]
+    Summarize --> Replace["摘要存入 session.summary，丢弃对应 Turn"]
     Replace --> Trim["大工具结果截断（保留首尾各 500 字符）"]
 ```
 
-**Compaction 阈值:** 从 settings.json 读取（默认 80,000 tokens），也可通过 `/compact` 命令手动触发。
+Compaction 阈值从 settings.json 读取（默认 80,000 tokens），也可通过 `/compact` 命令手动触发。
 
-**会话持久化:**
+**会话持久化：**
 
 ```
 ~/.emergence/sessions/
-├── index.json                    # id ↔ alias 映射 + meta 列表
-├── 2026-05-04-143022.json       # 完整对话历史
+├── index.json
+├── 2026-05-04-143022.json
 └── 2026-05-04-150000.json
+```
 
-index.json:
+JSON 格式保存 Turn 结构：
+
+```json
 {
-  "sessions": [
+  "id": "2026-05-04-143022",
+  "alias": "feature-x",
+  "turns": [
     {
-      "id": "2026-05-04-143022",
-      "alias": "feature-x",
-      "updated_at": "2026-05-04T14:35:00Z"
+      "id": "turn-1",
+      "status": "completed",
+      "started_at": "2026-05-04T14:30:02Z",
+      "completed_at": "2026-05-04T14:30:10Z",
+      "usage": { "input_tokens": 1200, "output_tokens": 456 },
+      "messages": [
+        { "role": "user", "content": "帮我添加 greet 函数" },
+        { "role": "assistant", "content": "好的，已添加 greet 函数" }
+      ]
     }
-  ]
+  ],
+  "summary": null,
+  "created_at": "2026-05-04T14:30:02Z",
+  "updated_at": "2026-05-04T14:35:00Z"
 }
 ```
 
 **别名查询:** `/sessions` 同时支持 id 和别名查找。`SessionKey::Id` 和 `SessionKey::Alias` 两种查询方式，别名通过 index.json 解析到 id。
-
-**ContextBuilder:** 构建发送给 LLM 的消息序列：
-
-```
-[SystemMessage(system_prompt + AGENTS.md + tools)]
-  → [SummaryMessage(compaction 摘要)]  (如有)
-  → [当前窗口的 messages...]
-```
 
 ---
 
@@ -533,23 +648,27 @@ graph TB
     Popups -.-> ChatPanel
 ```
 
-**布局划分：**
+**布局划分（按 Turn 分组渲染）：**
 
 ```
-┌──────────────────────────────────────────────────┐
-│                                                  │
-│  [14:30:02] You: 帮我添加一个 greet 函数          │  ← Chat Panel
-│                                                  │
-│  [14:30:05] 🤖 (2.3s · 456 tokens):              │
-│    好的，我来添加 greet 函数...                      │
-│                                                  │
-│  [14:30:08] 🔧 tool:read (120ms):                │
+┌──── Turn 1 · 14:30:02 · 456 tokens · 8.3s ──────┐
+│  You: 帮我添加一个 greet 函数                      │
+│  🤖 (thinking): 我需要读取 main.rs...              │
+│  🔧 tool:read (120ms):                            │
 │  ┌──────────────────────────────┐                │
 │  │ src/main.rs:1-20             │                │
 │  └──────────────────────────────┘                │
-│                                                  │
+│  🤖 (2.3s · 456 tokens): 好的，已添加 greet 函数   │
 ├──────────────────────────────────────────────────┤
-│  emergence · deepseek-v4-pro · 12K/200K · ✓     │ ← Status Bar
+┌──── Turn 2 · 14:32:05 · 234 tokens · 3.1s ──────┐
+│  You: 现在添加测试                                 │
+│  🤖 (3.1s · 234 tokens): 测试已添加到 tests/       │
+├──────────────────────────────────────────────────┤
+┌──── Turn 3 (streaming...) ──────────────────────┐
+│  You: 重构一下                                     │
+│  🤖 (streaming): 我来分析当前代码结构...            │
+├──────────────────────────────────────────────────┤
+│  emergence · deepseek-v4-pro · 12K/200K · ⏳     │ ← Status Bar
 ├──────────────────────────────────────────────────┤
 │  > _                                              │ ← Input Box
 │  [Ctrl+S 发送] [Esc 取消] [↑↓ 历史]               │
