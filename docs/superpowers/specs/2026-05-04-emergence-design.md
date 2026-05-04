@@ -892,6 +892,49 @@ classDiagram
 
 **按需加载：** `SkillRegistry::load_full_content(name)` 读取完整 markdown 文件，去掉 frontmatter 后返回 content 正文。
 
+**Skill 生命周期（Session 级）：**
+
+Skill 一旦通过 `/skill <name>` 加载，在 Session 内持续生效，所有后续 Turn 的 system prompt 均注入其 content。
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unloaded: 启动扫描 (仅 meta)
+    Unloaded --> Active: /skill <name>
+    Active --> Active: 后续 Turn 自动注入
+    Active --> Unloaded: /skill --off <name>
+    Active --> [*]: Session 关闭
+    Unloaded --> [*]: Session 关闭
+```
+
+**Session 扩展：**
+
+```rust
+struct Session {
+    // ... 现有字段
+    active_skills: Vec<String>,  // 已加载的 skill 名称列表
+}
+```
+
+**SessionManager 方法扩展：**
+
+```rust
+impl SessionManager {
+    fn activate_skill(&mut self, name: &str) -> Result<()>;
+    fn deactivate_skill(&mut self, name: &str) -> Result<()>;
+    fn active_skills(&self) -> &[String];
+}
+```
+
+**build_context 扩展：** 当前 Turn 构建 context 时，除注入 `<available_skills>` 元信息外，还将所有 `active_skills` 的完整 content 注入 system prompt：
+
+```
+[SystemMessage(system_prompt + AGENTS.md + <available_skills> + tools)]
+  → [SkillContent(rust-expert)]       (如 Active)
+  → [SkillContent(code-reviewer)]     (如 Active)
+  → [SummaryMessage]                  (如有)
+  → Turn[0].messages → Turn[1].messages → ...
+```
+
 **按需加载流程：**
 
 ```mermaid
@@ -918,7 +961,8 @@ sequenceDiagram
 | 命令 | 功能 |
 |------|------|
 | `/skills` | 列出可用 skill，显示 name、description、来源（`[user]` / `[project]`） |
-| `/skill <name>` | 加载指定 skill 的完整 content，注入当前对话 |
+| `/skill <name>` | 激活指定 skill（Session 级持久） |
+| `/skill --off <name>` | 停用指定 skill |
 
 **文件结构：**
 
@@ -982,7 +1026,7 @@ struct Suggestion {
 | `/tokens` | `/t` | 显示当前 token 用量详情 |
 | `/tools` | - | 列出可用工具及风险等级 |
 | `/skills` | - | 列出可用 skill 及来源 |
-| `/skill` | - | 按名称加载指定 skill：`/skill <name>` |
+| `/skill` | - | 激活/停用 skill：`/skill <name>`，`/skill --off <name>` |
 
 **模糊匹配：** 输入以 `/` 开头但未精确匹配时，使用 Levenshtein 编辑距离（阈值 ≤ 3）查找最近命令并提示：
 
