@@ -85,8 +85,7 @@ graph TB
     end
 
     subgraph AppCore["App Core (tokio event loop)"]
-        AgentLoop["Agent Loop"]
-        App["App State Machine"]
+        AgentLoop["AgentLoop"]
     end
 
     subgraph Modules["Modules"]
@@ -814,13 +813,17 @@ impl SessionManager {
 **ContextBuilder 展开逻辑：**
 
 ```
-[SystemMessage(system_prompt + AGENTS.md + tools)]
+[SystemMessage(system_prompt + AGENTS.md + <available_skills> + tools)]
+  → [SkillContent(rust-expert)]         (Active skill 的完整 content)
+  → [SkillContent(code-reviewer)]       (Active skill 的完整 content)
   → [SummaryMessage(compaction 摘要)]    (如有)
   → Turn[0].messages[0..]               (完整展开)
   → Turn[1].messages[0..]
   → ...
   → Turn[current].messages[0..]         (in_progress Turn)
 ```
+
+注：`<available_skills>` 仅含 name + description（轻量元信息），Active skill 的完整 content 在前者的 `<skill>` 标签内展开。
 
 对 LLM 而言，上下文仍是扁平的 `Vec<ChatMessage>`，Turn 仅用于内部组织结构。
 
