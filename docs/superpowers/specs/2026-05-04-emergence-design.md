@@ -394,11 +394,16 @@ sequenceDiagram
         PS-->>AL: true
         AL->>Tool: execute(params)
         Tool-->>AL: ToolOutput
-    else not whitelisted
+    else user approves once
         AL->>TUI: Event::ToolRequest { tool, params, risk }
-        TUI-->>AL: Action::ApproveTool (ApproveOnce)
-        AL->>PS: approve_once("bash", Write)
-        PS-->>AL: ()
+        TUI-->>AL: Action::ApproveOnce
+        AL->>Tool: execute(params)
+        Tool-->>AL: ToolOutput
+    else user approves always
+        AL->>TUI: Event::ToolRequest { tool, params, risk }
+        TUI-->>AL: Action::ApproveAlways
+        AL->>PS: approve_always("bash", Write)
+        PS-->>AL: ok
         AL->>Tool: execute(params)
         Tool-->>AL: ToolOutput
     end
