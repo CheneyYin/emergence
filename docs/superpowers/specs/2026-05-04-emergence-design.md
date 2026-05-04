@@ -794,327 +794,7 @@ graph TB
 
 ---
 
-## 8. 斜杠命令系统
-
-```mermaid
-classDiagram
-    class CommandRegistry {
-        +register::<C: Command>()
-        +dispatch(input) CommandOutput
-        +fuzzy_find(input) Vec~Suggestion~
-        +list() Vec~CommandMeta~
-    }
-
-    class Command {
-        <<trait>>
-        +name() &str
-        +aliases() &[&str]
-        +description() &str
-        +usage() &str
-        +execute(args, ctx) CommandOutput
-    }
-
-    CommandRegistry --> Command
-```
-
-```rust
-struct CommandContext<'a> {
-    config: &'a mut ConfigManager,
-    session: &'a mut SessionManager,
-    model: &'a mut String,
-    should_quit: &'a mut bool,
-}
-
-struct Suggestion {
-    name: String,
-    distance: usize,
-}
-```
-
-**v1 内置命令：**
-
-| 命令 | 别名 | 功能 |
-|------|------|------|
-| `/help` | `/?` | 列出所有命令或查看某命令详情 |
-| `/clear` | - | 清空当前对话上下文，保留 system prompt |
-| `/compact` | - | 手动触发上下文压缩，支持 `/compact status` |
-| `/config` | - | 查看/修改配置：`/config model <name>`，`/config reload` |
-| `/sessions` | `/s` | 列出、切换、删除、别名管理 |
-| `/quit` | `/q`, `/exit` | 退出程序 |
-| `/model` | `/m` | 快速切换模型 |
-| `/tokens` | `/t` | 显示当前 token 用量详情 |
-| `/tools` | - | 列出可用工具及风险等级 |
-| `/skills` | - | 列出可用 skill 及来源 |
-| `/skill` | - | 按名称加载指定 skill：`/skill <name>` |
-
-**模糊匹配：** 输入以 `/` 开头但未精确匹配时，使用 Levenshtein 编辑距离（阈值 ≤ 3）查找最近命令并提示：
-
-```
-⚠ Unknown command '/compac'. Did you mean:
-  → /compact    (压缩上下文)
-  → /config     (查看/修改配置)
-```
-
-**解析规则：** 以 `/` 开头 → 命令系统；否则 → Agent Loop 对话消息。参数以 shell 风格解析。
-
----
-
-## 9. 数据流
-
-一次典型请求的完整路径：
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant TUI as TUI
-    participant App as Agent Loop
-    participant SM as SessionManager
-    participant LLM as LLM Adapter
-    participant TR as ToolRegistry
-    participant PS as PermissionStore
-
-    User->>TUI: Ctrl+S 提交
-    TUI->>App: Action::Submit(msg)
-    App->>SM: push(User msg)
-    SM-->>App: ok
-    App->>SM: build_context()
-    SM-->>App: messages[]
-    App->>LLM: chat(messages, tools)
-
-    loop 流式响应
-        LLM-->>App: TextDelta
-        App->>TUI: Event::TextDelta → 重绘
-    end
-
-    LLM-->>App: Finish(ToolUse)
-    App->>TR: risk_level()
-    TR-->>App: RiskLevel
-
-    alt ReadOnly
-        App->>TR: execute()
-        TR-->>App: ToolOutput
-        App->>LLM: chat(messages + result)
-    else Write / System
-        App->>TUI: Event::ToolRequest
-        TUI->>User: 弹窗确认
-        User->>TUI: Approve
-        TUI->>App: Action::ApproveTool
-        App->>TR: execute()
-        TR-->>App: ToolOutput
-        App->>LLM: chat(messages + result)
-    end
-
-    loop 流式响应
-        LLM-->>App: TextDelta
-        App->>TUI: Event::TextDelta → 重绘
-    end
-
-    LLM-->>App: Finish(EndTurn)
-    App->>SM: complete_turn()
-    SM-->>App: ok
-    App->>SM: save()
-    SM-->>App: ok
-    App->>TUI: Event::AgentDone
-```
-
----
-
-## 10. 配置系统
-
-```mermaid
-flowchart TD
-    subgraph Priority["加载优先级 (高 → 低)"]
-        direction TB
-        P1["1. CLI 参数"]
-        P2["2. 环境变量"]
-        P3["3. ./.emergence/settings.json"]
-        P4["4. ./.emergence/AGENTS.md"]
-        P5["5. ~/.emergence/settings.json"]
-        P6["6. ~/.emergence/AGENTS.md"]
-    end
-
-    P1 --> P2 --> P3 --> P4 --> P5 --> P6
-```
-
-**settings.json 结构：**
-
-```json
-{
-  "version": 1,
-  "model": "deepseek/deepseek-v4-pro",
-  "generation": {
-    "max_tokens": 32000,
-    "temperature": 0.7,
-    "thinking": 32000
-  },
-  "providers": {
-    "deepseek": {
-      "api_key": "${DEEPSEEK_API_KEY}",
-      "base_url": "https://api.deepseek.com/v1",
-      "default_model": "deepseek-v4-pro"
-    }
-  },
-  "permissions": {
-    "auto_approve": ["read", "grep", "glob"],
-    "deny_patterns": ["sudo rm -rf /", "mkfs.*"]
-  },
-  "tools": {
-    "disabled": []
-  },
-  "session": {
-    "store_dir": "~/.emergence/sessions",
-    "auto_save": true,
-    "compaction_threshold_tokens": 80000
-  }
-}
-```
-
-**AGENTS.md:** 项目级指令文件，内容作为 system prompt 的 "Project Instructions" 段注入。
-
-**ConfigManager 职责：** 多级配置合并、`${ENV_VAR}` 占位符解析、`/config reload` 重载、必需字段校验。
-
----
-
-## 11. 错误处理
-
-```mermaid
-flowchart LR
-    subgraph Errors["错误分类"]
-        LLMErr["LLM 错误"]
-        ToolErr["Tool 执行错误"]
-        PersistErr["持久化错误"]
-        TUIErr["TUI 错误"]
-    end
-
-    subgraph Strategy["处理策略"]
-        Retry["RateLimit → 等 5s 重试\nServerError → 指数退避\nTimeout → 重试 1 次"]
-        Exit["AuthError → 退出"]
-        ReturnErr["执行失败 → 返回错误给 LLM"]
-        Notify["权限拒绝 → 通知用户"]
-        Fallback["写入失败 → 后台重试\n文件损坏 → 回退"]
-        Resize["终端 resize → 自动适应"]
-        Graceful["SIGTERM → 保存会话后退出\npanic → catch_unwind"]
-    end
-
-    LLMErr --> Retry
-    LLMErr --> Exit
-    ToolErr --> ReturnErr
-    ToolErr --> Notify
-    PersistErr --> Fallback
-    TUIErr --> Resize
-    TUIErr --> Graceful
-```
-
-所有非致命错误通过 `Event::Error { message }` 通知 TUI 层，显示在 Chat Panel 中，不中断 agent loop。
-
----
-
-## 12. 测试策略
-
-| 层级 | 工具 | 内容 |
-|------|------|------|
-| 单元测试 | `cargo test` | Provider adapter 消息转换、工具参数解析、bash 风险分类、编辑距离模糊匹配、配置合并逻辑 |
-| 集成测试 | `cargo test` | Agent Loop 模拟（mock LLM + mock tools）、Session 持久化往返、ConfigManager 加载 |
-| E2E 测试 | 集成脚本 | 完整对话流程（录制 LLM 响应）、权限弹窗交互（模拟键盘输入） |
-
-TUI 测试在 v1 以手动验证为主，自动化排版快照测试投入产出比有限。
-
----
-
-## 13. 项目文件结构
-
-```
-emergence/
-├── Cargo.toml
-├── src/
-│   ├── main.rs              # 入口：初始化 → TUI → event loop
-│   ├── app.rs               # App state, AgentLoop 实现
-│   ├── tui/
-│   │   ├── mod.rs           # Terminal 初始化、主渲染循环
-│   │   ├── widgets.rs       # ChatPanel, InputBox, StatusBar 组件
-│   │   ├── popups.rs        # 权限弹窗
-│   │   └── themes.rs        # 颜色、样式
-│   ├── llm/
-│   │   ├── mod.rs           # Provider trait, StreamEvent
-│   │   ├── registry.rs      # ProviderRegistry
-│   │   ├── openai.rs        # OpenAI-compatible adapter
-│   │   └── message.rs       # ChatMessage, ToolDefinition, 格式转换
-│   ├── tools/
-│   │   ├── mod.rs           # Tool trait, ToolRegistry
-│   │   ├── bash.rs
-│   │   ├── file.rs          # read, write, edit
-│   │   ├── search.rs        # grep, glob
-│   │   └── web.rs           # web_fetch, web_search
-│   ├── permissions/
-│   │   ├── mod.rs           # RiskLevel, PermissionStore
-│   │   └── bash_classifier.rs
-│   ├── session/
-│   │   ├── mod.rs           # Session, SessionManager
-│   │   ├── store.rs         # SessionStore trait, JsonFileStore
-│   │   ├── context.rs       # ContextBuilder, compaction
-│   │   └── summarizer.rs    # LLM 调用生成摘要
-│   ├── config/
-│   │   ├── mod.rs           # ConfigManager
-│   │   ├── settings.rs      # Settings 结构体、解析
-│   │   └── agents_md.rs     # AGENTS.md 解析
-│   ├── commands/
-│   │   ├── mod.rs           # Command trait, CommandRegistry
-│   │   ├── help.rs
-│   │   ├── clear.rs
-│   │   ├── compact.rs
-│   │   ├── config.rs
-│   │   ├── sessions.rs
-│   │   ├── model.rs
-│   │   ├── tokens.rs
-│   │   ├── skills.rs       # /skills, /skill 命令
-│   │   ├── tools.rs
-│   │   └── quit.rs
-│   ├── skills/
-│   │   ├── mod.rs           # SkillMeta, SkillRegistry
-│   │   └── loader.rs        # 文件扫描，两级目录合并
-│   └── utils/
-│       ├── fuzzy.rs         # 编辑距离匹配
-│       └── env.rs           # 环境变量展开
-└── tests/
-    ├── integration/
-    │   ├── agent_loop.rs
-    │   ├── session_persistence.rs
-    │   └── config_loading.rs
-    └── fixtures/
-        ├── mock_llm_responses.json
-        └── sample_settings.json
-```
-
----
-
-## 14. 依赖
-
-**核心依赖 (Cargo.toml):**
-
-| crate | 用途 |
-|-------|------|
-| `tokio` (full) | 异步运行时 |
-| `ratatui` | TUI 框架 |
-| `crossterm` | 终端控制 |
-| `reqwest` | HTTP (LLM API, web tools) |
-| `serde` / `serde_json` | 序列化、settings.json 解析 |
-| `async-trait` | async trait 支持 |
-| `tokio-stream` | Stream 抽象 |
-| `clap` | CLI 参数解析 |
-| `serde_yaml` | Skill frontmatter 解析 |
-| `tracing` + `tracing-subscriber` | 日志 |
-
-**dev 依赖：**
-
-| crate | 用途 |
-|-------|------|
-| `mockall` | Mock trait 生成 |
-| `tempfile` | 临时目录（测试用） |
-| `tokio-test` | 异步测试工具 |
-
----
-
-## 15. Skill 系统
+## 8. Skill 系统
 
 Skill 是可复用的 system prompt 片段，以 markdown 文件（含 YAML frontmatter）定义。启动时扫描两级目录，仅将 **name + description** 注入 system prompt 用于检索匹配，完整 content 按需加载。
 
@@ -1250,3 +930,323 @@ emergence/
 ```
 
 **依赖：** `serde_yaml` (frontmatter 解析)。
+## 9. 斜杠命令系统
+
+```mermaid
+classDiagram
+    class CommandRegistry {
+        +register::<C: Command>()
+        +dispatch(input) CommandOutput
+        +fuzzy_find(input) Vec~Suggestion~
+        +list() Vec~CommandMeta~
+    }
+
+    class Command {
+        <<trait>>
+        +name() &str
+        +aliases() &[&str]
+        +description() &str
+        +usage() &str
+        +execute(args, ctx) CommandOutput
+    }
+
+    CommandRegistry --> Command
+```
+
+```rust
+struct CommandContext<'a> {
+    config: &'a mut ConfigManager,
+    session: &'a mut SessionManager,
+    model: &'a mut String,
+    should_quit: &'a mut bool,
+}
+
+struct Suggestion {
+    name: String,
+    distance: usize,
+}
+```
+
+**v1 内置命令：**
+
+| 命令 | 别名 | 功能 |
+|------|------|------|
+| `/help` | `/?` | 列出所有命令或查看某命令详情 |
+| `/clear` | - | 清空当前对话上下文，保留 system prompt |
+| `/compact` | - | 手动触发上下文压缩，支持 `/compact status` |
+| `/config` | - | 查看/修改配置：`/config model <name>`，`/config reload` |
+| `/sessions` | `/s` | 列出、切换、删除、别名管理 |
+| `/quit` | `/q`, `/exit` | 退出程序 |
+| `/model` | `/m` | 快速切换模型 |
+| `/tokens` | `/t` | 显示当前 token 用量详情 |
+| `/tools` | - | 列出可用工具及风险等级 |
+| `/skills` | - | 列出可用 skill 及来源 |
+| `/skill` | - | 按名称加载指定 skill：`/skill <name>` |
+
+**模糊匹配：** 输入以 `/` 开头但未精确匹配时，使用 Levenshtein 编辑距离（阈值 ≤ 3）查找最近命令并提示：
+
+```
+⚠ Unknown command '/compac'. Did you mean:
+  → /compact    (压缩上下文)
+  → /config     (查看/修改配置)
+```
+
+**解析规则：** 以 `/` 开头 → 命令系统；否则 → Agent Loop 对话消息。参数以 shell 风格解析。
+
+---
+
+## 10. 数据流
+
+一次典型请求的完整路径：
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant TUI as TUI
+    participant App as Agent Loop
+    participant SM as SessionManager
+    participant LLM as LLM Adapter
+    participant TR as ToolRegistry
+    participant PS as PermissionStore
+
+    User->>TUI: Ctrl+S 提交
+    TUI->>App: Action::Submit(msg)
+    App->>SM: push(User msg)
+    SM-->>App: ok
+    App->>SM: build_context()
+    SM-->>App: messages[]
+    App->>LLM: chat(messages, tools)
+
+    loop 流式响应
+        LLM-->>App: TextDelta
+        App->>TUI: Event::TextDelta → 重绘
+    end
+
+    LLM-->>App: Finish(ToolUse)
+    App->>TR: risk_level()
+    TR-->>App: RiskLevel
+
+    alt ReadOnly
+        App->>TR: execute()
+        TR-->>App: ToolOutput
+        App->>LLM: chat(messages + result)
+    else Write / System
+        App->>TUI: Event::ToolRequest
+        TUI->>User: 弹窗确认
+        User->>TUI: Approve
+        TUI->>App: Action::ApproveTool
+        App->>TR: execute()
+        TR-->>App: ToolOutput
+        App->>LLM: chat(messages + result)
+    end
+
+    loop 流式响应
+        LLM-->>App: TextDelta
+        App->>TUI: Event::TextDelta → 重绘
+    end
+
+    LLM-->>App: Finish(EndTurn)
+    App->>SM: complete_turn()
+    SM-->>App: ok
+    App->>SM: save()
+    SM-->>App: ok
+    App->>TUI: Event::AgentDone
+```
+
+---
+
+## 11. 配置系统
+
+```mermaid
+flowchart TD
+    subgraph Priority["加载优先级 (高 → 低)"]
+        direction TB
+        P1["1. CLI 参数"]
+        P2["2. 环境变量"]
+        P3["3. ./.emergence/settings.json"]
+        P4["4. ./.emergence/AGENTS.md"]
+        P5["5. ~/.emergence/settings.json"]
+        P6["6. ~/.emergence/AGENTS.md"]
+    end
+
+    P1 --> P2 --> P3 --> P4 --> P5 --> P6
+```
+
+**settings.json 结构：**
+
+```json
+{
+  "version": 1,
+  "model": "deepseek/deepseek-v4-pro",
+  "generation": {
+    "max_tokens": 32000,
+    "temperature": 0.7,
+    "thinking": 32000
+  },
+  "providers": {
+    "deepseek": {
+      "api_key": "${DEEPSEEK_API_KEY}",
+      "base_url": "https://api.deepseek.com/v1",
+      "default_model": "deepseek-v4-pro"
+    }
+  },
+  "permissions": {
+    "auto_approve": ["read", "grep", "glob"],
+    "deny_patterns": ["sudo rm -rf /", "mkfs.*"]
+  },
+  "tools": {
+    "disabled": []
+  },
+  "session": {
+    "store_dir": "~/.emergence/sessions",
+    "auto_save": true,
+    "compaction_threshold_tokens": 80000
+  }
+}
+```
+
+**AGENTS.md:** 项目级指令文件，内容作为 system prompt 的 "Project Instructions" 段注入。
+
+**ConfigManager 职责：** 多级配置合并、`${ENV_VAR}` 占位符解析、`/config reload` 重载、必需字段校验。
+
+---
+
+## 12. 错误处理
+
+```mermaid
+flowchart LR
+    subgraph Errors["错误分类"]
+        LLMErr["LLM 错误"]
+        ToolErr["Tool 执行错误"]
+        PersistErr["持久化错误"]
+        TUIErr["TUI 错误"]
+    end
+
+    subgraph Strategy["处理策略"]
+        Retry["RateLimit → 等 5s 重试\nServerError → 指数退避\nTimeout → 重试 1 次"]
+        Exit["AuthError → 退出"]
+        ReturnErr["执行失败 → 返回错误给 LLM"]
+        Notify["权限拒绝 → 通知用户"]
+        Fallback["写入失败 → 后台重试\n文件损坏 → 回退"]
+        Resize["终端 resize → 自动适应"]
+        Graceful["SIGTERM → 保存会话后退出\npanic → catch_unwind"]
+    end
+
+    LLMErr --> Retry
+    LLMErr --> Exit
+    ToolErr --> ReturnErr
+    ToolErr --> Notify
+    PersistErr --> Fallback
+    TUIErr --> Resize
+    TUIErr --> Graceful
+```
+
+所有非致命错误通过 `Event::Error { message }` 通知 TUI 层，显示在 Chat Panel 中，不中断 agent loop。
+
+---
+
+## 13. 测试策略
+
+| 层级 | 工具 | 内容 |
+|------|------|------|
+| 单元测试 | `cargo test` | Provider adapter 消息转换、工具参数解析、bash 风险分类、编辑距离模糊匹配、配置合并逻辑 |
+| 集成测试 | `cargo test` | Agent Loop 模拟（mock LLM + mock tools）、Session 持久化往返、ConfigManager 加载 |
+| E2E 测试 | 集成脚本 | 完整对话流程（录制 LLM 响应）、权限弹窗交互（模拟键盘输入） |
+
+TUI 测试在 v1 以手动验证为主，自动化排版快照测试投入产出比有限。
+
+---
+
+## 14. 项目文件结构
+
+```
+emergence/
+├── Cargo.toml
+├── src/
+│   ├── main.rs              # 入口：初始化 → TUI → event loop
+│   ├── app.rs               # App state, AgentLoop 实现
+│   ├── tui/
+│   │   ├── mod.rs           # Terminal 初始化、主渲染循环
+│   │   ├── widgets.rs       # ChatPanel, InputBox, StatusBar 组件
+│   │   ├── popups.rs        # 权限弹窗
+│   │   └── themes.rs        # 颜色、样式
+│   ├── llm/
+│   │   ├── mod.rs           # Provider trait, StreamEvent
+│   │   ├── registry.rs      # ProviderRegistry
+│   │   ├── openai.rs        # OpenAI-compatible adapter
+│   │   └── message.rs       # ChatMessage, ToolDefinition, 格式转换
+│   ├── tools/
+│   │   ├── mod.rs           # Tool trait, ToolRegistry
+│   │   ├── bash.rs
+│   │   ├── file.rs          # read, write, edit
+│   │   ├── search.rs        # grep, glob
+│   │   └── web.rs           # web_fetch, web_search
+│   ├── permissions/
+│   │   ├── mod.rs           # RiskLevel, PermissionStore
+│   │   └── bash_classifier.rs
+│   ├── session/
+│   │   ├── mod.rs           # Session, SessionManager
+│   │   ├── store.rs         # SessionStore trait, JsonFileStore
+│   │   ├── context.rs       # ContextBuilder, compaction
+│   │   └── summarizer.rs    # LLM 调用生成摘要
+│   ├── config/
+│   │   ├── mod.rs           # ConfigManager
+│   │   ├── settings.rs      # Settings 结构体、解析
+│   │   └── agents_md.rs     # AGENTS.md 解析
+│   ├── commands/
+│   │   ├── mod.rs           # Command trait, CommandRegistry
+│   │   ├── help.rs
+│   │   ├── clear.rs
+│   │   ├── compact.rs
+│   │   ├── config.rs
+│   │   ├── sessions.rs
+│   │   ├── model.rs
+│   │   ├── tokens.rs
+│   │   ├── skills.rs       # /skills, /skill 命令
+│   │   ├── tools.rs
+│   │   └── quit.rs
+│   ├── skills/
+│   │   ├── mod.rs           # SkillMeta, SkillRegistry
+│   │   └── loader.rs        # 文件扫描，两级目录合并
+│   └── utils/
+│       ├── fuzzy.rs         # 编辑距离匹配
+│       └── env.rs           # 环境变量展开
+└── tests/
+    ├── integration/
+    │   ├── agent_loop.rs
+    │   ├── session_persistence.rs
+    │   └── config_loading.rs
+    └── fixtures/
+        ├── mock_llm_responses.json
+        └── sample_settings.json
+```
+
+---
+
+## 15. 依赖
+
+**核心依赖 (Cargo.toml):**
+
+| crate | 用途 |
+|-------|------|
+| `tokio` (full) | 异步运行时 |
+| `ratatui` | TUI 框架 |
+| `crossterm` | 终端控制 |
+| `reqwest` | HTTP (LLM API, web tools) |
+| `serde` / `serde_json` | 序列化、settings.json 解析 |
+| `async-trait` | async trait 支持 |
+| `tokio-stream` | Stream 抽象 |
+| `clap` | CLI 参数解析 |
+| `serde_yaml` | Skill frontmatter 解析 |
+| `tracing` + `tracing-subscriber` | 日志 |
+
+**dev 依赖：**
+
+| crate | 用途 |
+|-------|------|
+| `mockall` | Mock trait 生成 |
+| `tempfile` | 临时目录（测试用） |
+| `tokio-test` | 异步测试工具 |
+
+---
+
