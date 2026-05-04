@@ -580,8 +580,8 @@ classDiagram
     class AgentLoop {
         -permission_store: PermissionStore
         -tool_registry: ToolRegistry
-        -tui: TuiHandle
-        +run(action) AgentEvent
+        -action_tx: mpsc::UnboundedSender~Action~
+        +run(action)
     }
 
     class TUI {
@@ -730,6 +730,7 @@ classDiagram
         +alias: Option~String~
         +turns: Vec~Turn~
         +summary: Option~String~
+        +active_skills: Vec~String~
     }
 
     class Turn {
@@ -803,6 +804,10 @@ impl SessionManager {
     fn should_compact(&self, threshold: u32) -> bool;
     fn compact(&mut self) -> Result<()>;
     fn clear(&mut self);
+    // Skill 管理 (见 §8)
+    fn activate_skill(&mut self, name: &str) -> Result<()>;
+    fn deactivate_skill(&mut self, name: &str) -> Result<()>;
+    fn active_skills(&self) -> &[String];
 }
 ```
 
@@ -1432,10 +1437,14 @@ sequenceDiagram
         TR-->>App: ToolOutput
         App->>LLM: chat(messages + result)
     else Write / System
+        App->>PS: is_allowed(tool_name, Write)
+        PS-->>App: false
         App->>TUI: Event::ToolRequest
         TUI->>User: 弹窗确认
         User->>TUI: Approve
-        TUI->>App: Action::ApproveTool
+        TUI->>App: Action::ApproveAlways
+        App->>PS: approve_always(tool_name, Write)
+        PS-->>App: ok
         App->>TR: execute()
         TR-->>App: ToolOutput
         App->>LLM: chat(messages + result)
@@ -1482,6 +1491,8 @@ flowchart TD
   "generation": {
     "max_tokens": 32000,
     "temperature": 0.7,
+    "top_p": 1.0,
+    "stop_sequences": [],
     "thinking": 32000
   },
   "providers": {
