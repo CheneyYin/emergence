@@ -910,6 +910,7 @@ sequenceDiagram
     AL->>LLM: chat(messages + skill_content, tools)
     LLM-->>AL: StreamEvent::TextDelta
     AL->>TUI: Event::TextDelta
+    TUI-->>User: 显示回复
 ```
 
 **斜杠命令：**
