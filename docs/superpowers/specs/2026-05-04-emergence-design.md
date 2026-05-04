@@ -372,10 +372,23 @@ enum StreamEvent {
 **统一消息格式 (OpenAI-compatible):**
 
 ```rust
+enum Role { System, User, Assistant, Tool }
+
 struct ChatMessage {
-    role: Role,         // System | User | Assistant | Tool
-    content: Content,   // 多 part: text + tool_call + tool_result
+    role: Role,
+    content: Content,
     name: Option<String>,
+}
+
+enum Content {
+    Text(String),
+    Parts(Vec<ContentPart>),
+}
+
+enum ContentPart {
+    Text { text: String },
+    ToolUse { id: String, name: String, input: serde_json::Value },
+    ToolResult { tool_use_id: String, content: String, is_error: Option<bool> },
 }
 
 struct ToolDefinition {
