@@ -29,6 +29,50 @@ emergence 是一款类 Claude Code / Codex 的 agent CLI 工具。v1 目标：�
 
 采用方案 1：单体架构。所有模块在同一 tokio 进程中，通过 trait 接口隔离，TUI 与核心循环通过 mpsc channel 通信。
 
+**通信协议定义：**
+
+```rust
+enum Action {
+    Submit(String),              // 用户输入
+    ApproveOnce,                 // 批准工具执行一次
+    ApproveAlways,               // 批准工具并加入白名单
+    Deny,                        // 拒绝工具执行
+    Cancel,                      // 取消流式输出
+    Quit,                        // 退出程序
+}
+
+enum Event {
+    TextDelta {
+        content: String,
+        finish_reason: Option<String>,
+    },
+    ToolRequest {
+        id: String,
+        name: String,
+        params: serde_json::Value,
+        risk: RiskLevel,
+    },
+    ToolResult {
+        id: String,
+        output: String,
+        metadata: Option<serde_json::Value>,
+    },
+    ThinkingDelta {
+        content: String,
+    },
+    StatusUpdate {
+        tokens: u32,
+        model: String,
+    },
+    AgentDone {
+        stop_reason: StopReason,
+    },
+    Error {
+        message: String,
+    },
+}
+```
+
 ```mermaid
 graph TB
     subgraph TUI["TUI Layer (ratatui)"]
@@ -80,6 +124,7 @@ sequenceDiagram
 
     TUI->>App: Action::Submit(msg)
     App->>SM: push(user_message)
+    SM-->>App: ok
     App->>SM: build_context()
     SM-->>App: messages[]
     App->>LLM: chat(messages, tools)
@@ -186,6 +231,17 @@ struct ToolDefinition {
 }
 
 enum StopReason { EndTurn, MaxTokens, ToolUse, StopSequence }
+
+struct Usage {
+    input_tokens: u32,
+    output_tokens: u32,
+}
+
+struct ModelInfo {
+    id: String,
+    name: String,
+    max_tokens: u32,
+}
 
 struct GenerationConfig {
     max_tokens: u32,
@@ -299,6 +355,15 @@ enum RiskLevel {
 }
 ```
 
+**ToolOutput 定义：**
+
+```rust
+struct ToolOutput {
+    content: String,
+    metadata: Option<serde_json::Value>,
+}
+```
+
 **v1 Tool Set (8 个工具):**
 
 | 工具 | 风险等级 | 说明 |
@@ -375,6 +440,14 @@ classDiagram
     AgentLoop --> TUI
     ToolRegistry ..> RiskLevel
     PermissionStore ..> RiskLevel
+```
+
+```rust
+enum UserChoice {
+    ApproveOnce,
+    ApproveAlways,
+    Deny,
+}
 ```
 
 白名单仅当前 session 有效，`clear()` 在会话关闭时调用。不在会话持久化文件中保存。
@@ -479,6 +552,21 @@ enum TurnStatus {
 }
 
 type TurnId = String;  // "turn-1", "turn-2", ...
+type SessionId = String;
+
+enum SessionKey {
+    Id(SessionId),
+    Alias(String),
+}
+
+struct SessionMeta {
+    id: SessionId,
+    alias: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    message_count: usize,
+    summary: Option<String>,
+}
 ```
 
 ```mermaid
@@ -707,7 +795,7 @@ graph TB
 classDiagram
     class CommandRegistry {
         +register::<C: Command>()
-        +dispatch(input) CommandResult
+        +dispatch(input) CommandOutput
         +fuzzy_find(input) Vec~Suggestion~
         +list() Vec~CommandMeta~
     }
@@ -722,6 +810,20 @@ classDiagram
     }
 
     CommandRegistry --> Command
+```
+
+```rust
+struct CommandContext<'a> {
+    config: &'a mut ConfigManager,
+    session: &'a mut SessionManager,
+    model: &'a mut String,
+    should_quit: &'a mut bool,
+}
+
+struct Suggestion {
+    name: String,
+    distance: usize,
+}
 ```
 
 **v1 内置命令：**
@@ -760,7 +862,6 @@ sequenceDiagram
     participant TUI as TUI
     participant App as Agent Loop
     participant SM as SessionManager
-    participant CB as ContextBuilder
     participant LLM as LLM Adapter
     participant TR as ToolRegistry
     participant PS as PermissionStore
@@ -768,8 +869,9 @@ sequenceDiagram
     User->>TUI: Ctrl+S 提交
     TUI->>App: Action::Submit(msg)
     App->>SM: push(User msg)
-    App->>CB: build_context()
-    CB-->>App: messages[]
+    SM-->>App: ok
+    App->>SM: build_context()
+    SM-->>App: messages[]
     App->>LLM: chat(messages, tools)
 
     loop 流式响应
@@ -779,6 +881,7 @@ sequenceDiagram
 
     LLM-->>App: Finish(ToolUse)
     App->>TR: risk_level()
+    TR-->>App: RiskLevel
 
     alt ReadOnly
         App->>TR: execute()
