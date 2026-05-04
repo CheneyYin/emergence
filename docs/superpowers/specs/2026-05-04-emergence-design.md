@@ -93,6 +93,11 @@ sequenceDiagram
     App->>TR: execute(tool, params)
     TR-->>App: ToolOutput
     App->>LLM: chat(messages + tool_result)
+    LLM-->>App: StreamEvent::TextDelta
+    App->>TUI: Event::TextDelta
+    LLM-->>App: StreamEvent::Finish(EndTurn)
+    App->>SM: save()
+    App->>TUI: Event::AgentDone
 ```
 
 ---
@@ -596,8 +601,16 @@ sequenceDiagram
         User->>TUI: Approve
         TUI->>App: Action::ApproveTool
         App->>TR: execute()
+        TR-->>App: ToolOutput
+        App->>LLM: chat(messages + result)
     end
 
+    loop 流式响应
+        LLM-->>App: TextDelta
+        App->>TUI: Event::TextDelta → 重绘
+    end
+
+    LLM-->>App: Finish(EndTurn)
     App->>SM: save() → ~/.emergence/sessions/
     App->>TUI: Event::AgentDone
 ```
