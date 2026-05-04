@@ -96,7 +96,10 @@ sequenceDiagram
     LLM-->>App: StreamEvent::TextDelta
     App->>TUI: Event::TextDelta
     LLM-->>App: StreamEvent::Finish(EndTurn)
+    App->>SM: complete_turn()
+    SM-->>App: ok
     App->>SM: save()
+    SM-->>App: ok
     App->>TUI: Event::AgentDone
 ```
 
@@ -797,7 +800,10 @@ sequenceDiagram
     end
 
     LLM-->>App: Finish(EndTurn)
-    App->>SM: save() → ~/.emergence/sessions/
+    App->>SM: complete_turn()
+    SM-->>App: ok
+    App->>SM: save()
+    SM-->>App: ok
     App->>TUI: Event::AgentDone
 ```
 
