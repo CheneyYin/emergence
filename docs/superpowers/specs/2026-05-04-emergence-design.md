@@ -154,6 +154,153 @@ sequenceDiagram
     App->>TUI: Event::AgentDone
 ```
 
+**Agent Loop 详细设计：**
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Processing: 用户输入 Submit
+    Processing --> Streaming: LLM 开始响应
+    Streaming --> ToolDecision: Finish(ToolUse)
+    Streaming --> Idle: Finish(EndTurn/MaxTokens)
+    ToolDecision --> ToolExecuting: ReadOnly 自动放行
+    ToolDecision --> WaitingPermission: Write/System
+    WaitingPermission --> ToolExecuting: 用户批准
+    WaitingPermission --> Processing: 用户拒绝 → denied → LLM
+    ToolExecuting --> Processing: 工具结果回送 LLM
+    Idle --> [*]: Quit / 致命错误
+```
+
+**核心结构：**
+
+```rust
+struct AgentLoop {
+    // 子系统
+    config: ConfigManager,
+    session: SessionManager,
+    tool_registry: ToolRegistry,
+    command_registry: CommandRegistry,
+    skill_registry: SkillRegistry,
+    hook_registry: HookRegistry,
+    provider_registry: ProviderRegistry,
+    permission_store: PermissionStore,
+
+    // 运行时状态
+    state: AgentState,
+    model: String,
+    system_prompt: String,
+    current_turn_start: Option<Instant>,
+    stream_cancel: Option<oneshot::Sender<()>>,
+}
+
+enum AgentState {
+    Idle,
+    Processing,
+    Streaming,
+    WaitingPermission {
+        tool_name: String,
+        params: Value,
+        risk: RiskLevel,
+    },
+}
+```
+
+**run() 执行流程：**
+
+```mermaid
+flowchart TD
+    Start["run(action, event_tx)"] --> Match{"action?"}
+    Match -->|"Submit(input)"| PreCheck{"以 / 开头?"}
+    PreCheck -->|"是"| DispatchCmd["command_registry.dispatch()"]
+    PreCheck -->|"否"| BeginTurn["session.begin_turn()"]
+    DispatchCmd --> Done["→ Idle"]
+    BeginTurn --> Hook1["hooks.dispatch(UserInput)"]
+    Hook1 --> BuildCtx["session.build_context()"]
+    BuildCtx --> CallLLM["provider.chat()"]
+    CallLLM --> Stream["process_stream() 流式循环"]
+    Stream --> Reason{"StopReason?"}
+    Reason -->|"ToolUse"| Risk["tool_registry.risk_level()"]
+    Reason -->|"EndTurn"| Complete["session.complete_turn() → save() → Idle"]
+    Risk --> ReadOnly{"ReadOnly?"}
+    ReadOnly -->|"是"| Exec["execute_tool()"]
+    ReadOnly -->|"否"| Wait["→ WaitingPermission"]
+    Wait --> PermChoice{"用户?"}
+    PermChoice -->|"Approve"| Exec
+    PermChoice -->|"Deny"| Denied["构造 denied 消息 → 回 LLM"]
+    Exec --> Hook2["hooks.dispatch(PostToolExecute)"]
+    Hook2 --> CallLLM
+    Match -->|"ApproveOnce/Always/Deny"| Resume["恢复 WaitingPermission"]
+    Resume --> PermChoice
+    Match -->|"Quit"| Shutdown["session.save() → 退出"]
+```
+
+**流式处理循环：**
+
+```rust
+async fn process_stream(
+    stream: &mut ChatStream,
+    event_tx: &mpsc::UnboundedSender<Event>,
+) -> Result<StopReason> {
+    let mut text_buffer = String::new();
+    while let Some(item) = stream.next().await {
+        match item? {
+            StreamEvent::TextDelta(content) => {
+                text_buffer.push_str(&content);
+                event_tx.send(Event::TextDelta { content, finish_reason: None }).ok();
+            }
+            StreamEvent::ToolCallDelta { id, name, arguments_json_fragment } => {
+                // 累积 tool call 参数
+            }
+            StreamEvent::Finish { stop_reason, usage } => {
+                event_tx.send(Event::StatusUpdate {
+                    tokens: usage.input_tokens + usage.output_tokens,
+                    model: "current".into(),
+                }).ok();
+                return Ok(stop_reason);
+            }
+        }
+    }
+    Ok(StopReason::EndTurn)
+}
+```
+
+**Tool 执行子流程：**
+
+```rust
+async fn execute_tool(
+    hooks: &HookRegistry,
+    tools: &ToolRegistry,
+    tool_name: &str,
+    params: &Value,
+) -> Result<ToolOutput> {
+    // 1. PreToolExecute hook（可 Abort）
+    for outcome in hooks.dispatch(&PreToolExecute { tool: tool_name.into(), params: params.clone() }).await {
+        if let HookOutcome::Abort { reason } = outcome {
+            return Ok(ToolOutput { content: format!("Aborted: {}", reason), metadata: None });
+        }
+    }
+
+    // 2. 执行工具
+    let result = tools.execute(tool_name, params.clone()).await?;
+
+    // 3. PostToolExecute hook
+    hooks.dispatch(&PostToolExecute { tool: tool_name.into(), result: result.clone() }).await;
+
+    Ok(result)
+}
+```
+
+**LLM 错误恢复：**
+
+```mermaid
+flowchart TD
+    Err["provider.chat() 返回 Err"] --> Class{"错误类型?"}
+    Class -->|"RateLimit"| Wait["sleep 5s → 重试"]
+    Class -->|"ServerError"| Backoff["指数退避: 1s, 2s, 4s... → 重试"]
+    Class -->|"AuthError"| Fatal["Event::Error → 退出"]
+    Class -->|"其他"| Log["Event::Error → 返回 Idle"]
+```
+
 ---
 
 ## 3. LLM Provider 层
