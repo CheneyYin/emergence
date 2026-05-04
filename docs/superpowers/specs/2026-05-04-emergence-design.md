@@ -332,15 +332,76 @@ flowchart TD
     Result --> Continue["Agent Loop 继续"]
 ```
 
-**Session 白名单：**
+**类模型：**
 
-```rust
-struct PermissionStore {
-    always_allow: HashSet<(String, RiskLevel)>,
-}
+```mermaid
+classDiagram
+    class RiskLevel {
+        <<enum>>
+        ReadOnly
+        Write
+        System
+    }
+
+    class PermissionStore {
+        -always_allow: HashSet<(String, RiskLevel)>
+        +is_allowed(tool_name, risk_level) bool
+        +approve_once(tool_name, risk_level)
+        +approve_always(tool_name, risk_level)
+        +deny()
+        +clear()
+    }
+
+    class ToolRegistry {
+        +risk_level(name, params) RiskLevel
+    }
+
+    class AgentLoop {
+        -permission_store: PermissionStore
+        -tool_registry: ToolRegistry
+        -tui: TuiHandle
+        +run(action) AgentEvent
+    }
+
+    class TUI {
+        +show_permission_dialog(request) UserChoice
+    }
+
+    AgentLoop --> PermissionStore
+    AgentLoop --> ToolRegistry
+    AgentLoop --> TUI
+    ToolRegistry ..> RiskLevel
+    PermissionStore ..> RiskLevel
 ```
 
-白名单仅当前 session 有效，关闭后重置。不在会话持久化文件中保存。
+白名单仅当前 session 有效，`clear()` 在会话关闭时调用。不在会话持久化文件中保存。
+
+**权限确认时序：**
+
+```mermaid
+sequenceDiagram
+    participant AL as AgentLoop
+    participant TR as ToolRegistry
+    participant PS as PermissionStore
+    participant TUI as TUI
+    participant Tool as Tool
+
+    AL->>TR: risk_level("bash", {"command": "git push"})
+    TR-->>AL: RiskLevel::Write
+
+    alt already whitelisted
+        AL->>PS: is_allowed("bash", Write)
+        PS-->>AL: true
+        AL->>Tool: execute(params)
+        Tool-->>AL: ToolOutput
+    else not whitelisted
+        AL->>TUI: Event::ToolRequest { tool, params, risk }
+        TUI-->>AL: Action::ApproveTool (ApproveOnce)
+        AL->>PS: approve_once("bash", Write)
+        AL->>Tool: execute(params)
+        Tool-->>AL: ToolOutput
+    end
+```
 
 **权限弹窗 TUI 设计：**
 
