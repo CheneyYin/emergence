@@ -133,8 +133,12 @@ sequenceDiagram
     LLM-->>App: StreamEvent::Finish(ToolUse)
     App->>TR: risk_level(tool_name, params)
     TR-->>App: RiskLevel::Write
+    App->>PS: is_allowed(tool_name, Write)
+    PS-->>App: false
     App->>TUI: Event::ToolRequest
-    TUI->>App: Action::ApproveTool
+    TUI->>App: Action::ApproveAlways
+    App->>PS: approve_always(tool_name, Write)
+    PS-->>App: ok
     App->>TR: execute(tool, params)
     TR-->>App: ToolOutput
     App->>LLM: chat(messages + tool_result)
