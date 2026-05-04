@@ -236,7 +236,7 @@ classDiagram
 
     class BashTool {
         +name() "bash"
-        +risk_level() detect from command
+        +risk_level() ReadOnly | Write | System
     }
 
     class ReadTool {
@@ -300,7 +300,7 @@ enum RiskLevel {
 
 | 工具 | 风险等级 | 说明 |
 |------|----------|------|
-| `bash` | Write/System | 根据命令内容分级。无副作用 ReadOnly，写文件 Write，sudo/rm/curl|sh 等 System |
+| `bash` | ReadOnly/Write/System | 根据命令内容分级：无副作用命令 ReadOnly，写文件 Write，sudo/rm/curl|sh 等 System |
 | `read` | ReadOnly | 读取文件，支持 offset/limit |
 | `write` | Write | 创建或覆盖文件 |
 | `edit` | Write | 精确字符串替换 |
