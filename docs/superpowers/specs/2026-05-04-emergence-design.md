@@ -398,6 +398,7 @@ sequenceDiagram
         AL->>TUI: Event::ToolRequest { tool, params, risk }
         TUI-->>AL: Action::ApproveTool (ApproveOnce)
         AL->>PS: approve_once("bash", Write)
+        PS-->>AL: ()
         AL->>Tool: execute(params)
         Tool-->>AL: ToolOutput
     end
