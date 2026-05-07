@@ -606,7 +606,7 @@ mod tests {
         let messages = vec![ChatMessage {
             role: Role::User,
             content: Content::Text("hello".to_string()),
-            name: None,
+            name: None, tool_call_id: None,
         }];
         let body = adapter.build_chat_request(
             "deepseek-v4-pro",
@@ -2424,7 +2424,7 @@ mod tests {
         ChatMessage {
             role: Role::User,
             content: Content::Text(text.to_string()),
-            name: None,
+            name: None, tool_call_id: None,
         }
     }
 
@@ -2801,8 +2801,8 @@ mod tests {
         let turns: Vec<Turn> = (1..=5).map(|i| Turn {
             id: format!("turn-{}", i),
             messages: vec![
-                ChatMessage { role: Role::User, content: Content::Text(format!("问题 {}", i)), name: None },
-                ChatMessage { role: Role::Assistant, content: Content::Text(format!("回答 {}", i)), name: None },
+                ChatMessage { role: Role::User, content: Content::Text(format!("问题 {}", i)), name: None, tool_call_id: None },
+                ChatMessage { role: Role::Assistant, content: Content::Text(format!("回答 {}", i)), name: None, tool_call_id: None },
             ],
             status: crate::session::TurnStatus::Completed,
             started_at: Utc::now(),
@@ -2872,7 +2872,7 @@ impl ContextBuilder {
         messages.push(ChatMessage {
             role: Role::System,
             content: Content::Text(system_text),
-            name: None,
+            name: None, tool_call_id: None,
         });
 
         // 5. 注入 Active Skills 的完整内容
@@ -2880,7 +2880,7 @@ impl ContextBuilder {
             messages.push(ChatMessage {
                 role: Role::System,
                 content: Content::Text(skill_content.clone()),
-                name: Some("skill".into()),
+                name: Some("skill".into()), tool_call_id: None,
             });
         }
 
@@ -2889,7 +2889,7 @@ impl ContextBuilder {
             messages.push(ChatMessage {
                 role: Role::System,
                 content: Content::Text(format!("<conversation_summary>\n{}\n</conversation_summary>", summary)),
-                name: Some("summary".into()),
+                name: Some("summary".into()), tool_call_id: None,
             });
         }
 
@@ -2943,7 +2943,7 @@ mod tests {
             ChatMessage {
                 role: Role::User,
                 content: Content::Text("hello world".into()),
-                name: None,
+                name: None, tool_call_id: None,
             },
         ];
         let tokens = ContextBuilder::estimated_tokens(&msgs);
@@ -5473,7 +5473,7 @@ impl AgentLoop {
         let user_msg = ChatMessage {
             role: Role::User,
             content: Content::Text(input),
-            name: None,
+            name: None, tool_call_id: None,
         };
         self.session.begin_turn(user_msg);
 
@@ -6217,7 +6217,7 @@ async fn test_session_save_and_load_roundtrip() {
     sm.begin_turn(emergence::llm::ChatMessage {
         role: emergence::llm::Role::User,
         content: emergence::llm::Content::Text("hello world".into()),
-        name: None,
+        name: None, tool_call_id: None,
     });
     sm.complete_turn().unwrap();
 
@@ -6382,14 +6382,14 @@ fn test_session_manager_context_building() {
     sm.begin_turn(emergence::llm::ChatMessage {
         role: emergence::llm::Role::User,
         content: emergence::llm::Content::Text("请写一个函数".into()),
-        name: None,
+        name: None, tool_call_id: None,
     });
 
     // 模拟助手回复
     sm.push(emergence::llm::ChatMessage {
         role: emergence::llm::Role::Assistant,
         content: emergence::llm::Content::Text("好的，这是你需要的函数...".into()),
-        name: None,
+        name: None, tool_call_id: None,
     }).unwrap();
     sm.complete_turn().unwrap();
 
