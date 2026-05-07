@@ -12,6 +12,8 @@ pub use message::{
 
 pub use registry::ProviderRegistry;
 
+pub mod openai;
+
 /// LLM 流式事件
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
