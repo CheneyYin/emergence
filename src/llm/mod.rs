@@ -3,11 +3,14 @@ use futures::stream::Stream;
 use std::pin::Pin;
 
 pub mod message;
+pub mod registry;
 
 pub use message::{
     ChatMessage, Content, ContentPart, GenerationConfig,
     ModelInfo, Role, StopReason, ToolDefinition, Usage,
 };
+
+pub use registry::ProviderRegistry;
 
 /// LLM 流式事件
 #[derive(Debug, Clone)]
