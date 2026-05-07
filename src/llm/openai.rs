@@ -278,4 +278,132 @@ mod tests {
             other => panic!("expected Finish, got {:?}", other),
         }
     }
+
+    // ── parse_sse_line edge cases ──
+
+    #[test]
+    fn test_parse_sse_done_signal() {
+        let event = OpenAIAdapter::parse_sse_line("data: [DONE]");
+        match event {
+            Some(Ok(StreamEvent::Finish { stop_reason, usage })) => {
+                assert_eq!(stop_reason, StopReason::EndTurn);
+                assert_eq!(usage.input_tokens, 0);
+                assert_eq!(usage.output_tokens, 0);
+            }
+            other => panic!("expected Finish from [DONE], got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_sse_tool_call_delta() {
+        let event = OpenAIAdapter::parse_sse_line(
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"id":"tc_1","function":{"name":"read","arguments":"{\"p"}}]},"index":0}]}"#
+        );
+        match event {
+            Some(Ok(StreamEvent::ToolCallDelta { id, name, arguments_json_fragment })) => {
+                assert_eq!(id, "tc_1");
+                assert_eq!(name, "read");
+                assert_eq!(arguments_json_fragment, "{\"p");
+            }
+            other => panic!("expected ToolCallDelta, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_sse_thinking_delta() {
+        let event = OpenAIAdapter::parse_sse_line(
+            r#"data: {"choices":[{"delta":{"reasoning_content":"Let me think..."},"index":0}]}"#
+        );
+        match event {
+            Some(Ok(StreamEvent::ThinkingDelta(text))) => assert_eq!(text, "Let me think..."),
+            other => panic!("expected ThinkingDelta, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_sse_non_data_line_returns_none() {
+        let event = OpenAIAdapter::parse_sse_line("event: ping");
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn test_parse_sse_invalid_json_returns_none() {
+        let event = OpenAIAdapter::parse_sse_line("data: not-json");
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn test_parse_sse_finish_reason_tool_calls() {
+        let event = OpenAIAdapter::parse_sse_line(
+            r#"data: {"choices":[{"finish_reason":"tool_calls","delta":{"content":""},"index":0}]}"#
+        );
+        match event {
+            Some(Ok(StreamEvent::Finish { stop_reason, .. })) => {
+                assert_eq!(stop_reason, StopReason::ToolUse);
+            }
+            other => panic!("expected Finish with ToolUse, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_sse_finish_reason_length() {
+        let event = OpenAIAdapter::parse_sse_line(
+            r#"data: {"choices":[{"finish_reason":"length","delta":{"content":""},"index":0}]}"#
+        );
+        match event {
+            Some(Ok(StreamEvent::Finish { stop_reason, .. })) => {
+                assert_eq!(stop_reason, StopReason::MaxTokens);
+            }
+            other => panic!("expected Finish with MaxTokens, got {:?}", other),
+        }
+    }
+
+    // ── build_chat_request edge cases ──
+
+    #[test]
+    fn test_build_chat_request_with_stop_sequences() {
+        let adapter = make_adapter();
+        let body = adapter.build_chat_request(
+            "m1", &[], &[],
+            &GenerationConfig {
+                max_tokens: 100, temperature: 0.0, top_p: 1.0,
+                stop_sequences: vec!["```".into(), "END".into()],
+                thinking: None, tools: None,
+            },
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let stops = parsed["stop"].as_array().unwrap();
+        assert_eq!(stops.len(), 2);
+        assert_eq!(stops[0], "```");
+        assert_eq!(stops[1], "END");
+    }
+
+    #[test]
+    fn test_build_chat_request_with_thinking() {
+        let adapter = make_adapter();
+        let body = adapter.build_chat_request(
+            "m1", &[], &[],
+            &GenerationConfig {
+                max_tokens: 100, temperature: 0.0, top_p: 1.0,
+                stop_sequences: vec![],
+                thinking: Some(16000), tools: None,
+            },
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let thinking = &parsed["thinking"];
+        assert_eq!(thinking["type"], "enabled");
+        assert_eq!(thinking["budget_tokens"], 16000);
+    }
+
+    // ── OpenAIAdapter::new ──
+
+    #[test]
+    fn test_new_trims_trailing_slash() {
+        let adapter = OpenAIAdapter::new(
+            "https://api.example.com/v1/".to_string(),
+            "sk-test".to_string(),
+            vec![],
+        );
+        assert_eq!(adapter.base_url, "https://api.example.com/v1");
+    }
 }
