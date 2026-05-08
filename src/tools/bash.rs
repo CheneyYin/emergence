@@ -152,11 +152,58 @@ mod tests {
         assert_eq!(BashTool::classify_command("npm install"), RiskLevel::Write);
     }
 
+    #[test]
+    fn test_bash_name_and_description() {
+        let tool = BashTool;
+        assert_eq!(tool.name(), "bash");
+        assert!(tool.description().contains("shell"));
+    }
+
+    #[test]
+    fn test_risk_level_via_trait() {
+        let tool = BashTool;
+        assert_eq!(tool.risk_level(&serde_json::json!({"command": "ls"})), RiskLevel::ReadOnly);
+        assert_eq!(tool.risk_level(&serde_json::json!({"command": "rm file"})), RiskLevel::System);
+        assert_eq!(tool.risk_level(&serde_json::json!({"command": "cargo build"})), RiskLevel::Write);
+    }
+
+    #[test]
+    fn test_risk_level_missing_command_defaults_to_write() {
+        let tool = BashTool;
+        assert_eq!(tool.risk_level(&serde_json::json!({})), RiskLevel::Write);
+    }
+
+    #[test]
+    fn test_classify_trimmed_input() {
+        assert_eq!(BashTool::classify_command("  ls -la  "), RiskLevel::ReadOnly);
+    }
+
+    #[test]
+    fn test_classify_dangerous_before_safe() {
+        // "echo text | sudo ls" — contains "sudo " (dangerous), danger takes priority
+        assert_eq!(BashTool::classify_command("echo text | sudo ls"), RiskLevel::System);
+    }
+
     #[tokio::test]
     async fn test_execute_echo() {
         let tool = BashTool;
         let output = tool.execute(serde_json::json!({"command": "echo hello"})).await.unwrap();
         assert!(output.content.contains("hello"));
         assert_eq!(output.metadata.unwrap()["exit_code"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_stderr() {
+        let tool = BashTool;
+        let output = tool.execute(serde_json::json!({"command": "echo ok && ls /nonexistent_path_xyz"})).await.unwrap();
+        assert!(output.content.contains("--- stderr ---"));
+        assert!(output.content.contains("ok"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_empty_output() {
+        let tool = BashTool;
+        let output = tool.execute(serde_json::json!({"command": "true"})).await.unwrap();
+        assert_eq!(output.content, "(无输出)");
     }
 }

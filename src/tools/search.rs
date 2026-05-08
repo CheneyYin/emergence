@@ -168,4 +168,47 @@ mod tests {
         assert_eq!(tool.name(), "glob");
         assert!(tool.description().contains("文件模式"));
     }
+
+    #[test]
+    fn test_glob_parameters() {
+        let tool = GlobTool;
+        let params = tool.parameters();
+        assert!(params["required"].as_array().unwrap().contains(&serde_json::json!("pattern")));
+    }
+
+    #[tokio::test]
+    async fn test_glob_empty_result() {
+        let tool = GlobTool;
+        let params = serde_json::json!({"pattern": "nonexistent_*.xyz", "path": "."});
+        let output = tool.execute(params).await.unwrap();
+        assert_eq!(output.content, "未找到匹配文件");
+    }
+
+    #[tokio::test]
+    async fn test_grep_empty_result() {
+        let tool = GrepTool;
+        // 运行时生成随机字符串，避免匹配到测试源码自身
+        let random_pattern = format!("NOTFOUND_{}", std::process::id());
+        let params = serde_json::json!({"pattern": random_pattern, "path": "src"});
+        let output = tool.execute(params).await.unwrap();
+        assert_eq!(output.content, "未找到匹配结果");
+    }
+
+    #[tokio::test]
+    async fn test_glob_metadata_file_count() {
+        let tool = GlobTool;
+        let params = serde_json::json!({"pattern": "*.rs", "path": "src"});
+        let output = tool.execute(params).await.unwrap();
+        let file_count = output.metadata.unwrap()["file_count"].as_u64().unwrap();
+        assert!(file_count > 0);
+    }
+
+    #[tokio::test]
+    async fn test_grep_metadata_match_count() {
+        let tool = GrepTool;
+        let params = serde_json::json!({"pattern": "fn", "path": "src", "include": "*.rs"});
+        let output = tool.execute(params).await.unwrap();
+        let match_count = output.metadata.unwrap()["match_count"].as_u64().unwrap();
+        assert!(match_count > 0);
+    }
 }
