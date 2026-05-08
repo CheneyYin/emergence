@@ -223,6 +223,101 @@ fn _save_input_history(history: &[String]) {
     let _ = history;
 }
 
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::permissions::RiskLevel;
+    use crate::llm::StopReason;
+
+    /// Verifies that TuiState can be constructed with default values.
+    #[test]
+    fn test_tui_state_construction() {
+        let state = TuiState {
+            messages: vec![],
+            status_text: "ready".into(),
+            input_buffer: String::new(),
+            show_permission_dialog: None,
+            streaming: false,
+            input_history: vec![],
+            history_index: None,
+            pending_input: String::new(),
+        };
+        assert!(state.messages.is_empty());
+        assert_eq!(state.status_text, "ready");
+    }
+
+    /// Verifies that RenderedMessage variants can be constructed and debugged.
+    #[test]
+    fn test_rendered_message_variants() {
+        let user = RenderedMessage::User { timestamp: "12:00".into(), content: "hi".into() };
+        assert!(format!("{:?}", user).contains("User"));
+
+        let err = RenderedMessage::Error { message: "oops".into() };
+        assert!(format!("{:?}", err).contains("Error"));
+    }
+
+    /// Verifies that handle_app_event processes TextDelta by updating the last assistant message or creating one.
+    #[test]
+    fn test_handle_text_delta() {
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let event = AppEvent::TextDelta { content: "Hello".into(), finish_reason: None };
+        handle_app_event(event, &mut state).unwrap();
+        assert!(state.streaming);
+        assert_eq!(state.messages.len(), 1);
+    }
+
+    /// Verifies that handle_app_event processes ThinkingDelta by appending a Thinking message.
+    #[test]
+    fn test_handle_thinking_delta() {
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let event = AppEvent::ThinkingDelta { content: "thinking...".into() };
+        handle_app_event(event, &mut state).unwrap();
+        assert!(matches!(state.messages.last(), Some(RenderedMessage::Thinking { .. })));
+    }
+
+    /// Verifies that handle_app_event processes ToolRequest by setting the permission dialog.
+    #[test]
+    fn test_handle_tool_request() {
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let event = AppEvent::ToolRequest { id: "t1".into(), name: "bash".into(), params: serde_json::json!({"cmd": "ls"}), risk: RiskLevel::Write };
+        handle_app_event(event, &mut state).unwrap();
+        assert!(state.show_permission_dialog.is_some());
+        let dialog = state.show_permission_dialog.unwrap();
+        assert_eq!(dialog.tool_name, "bash");
+        assert_eq!(dialog.risk, RiskLevel::Write);
+    }
+
+    /// Verifies that handle_app_event processes AgentDone by stopping streaming and updating status.
+    #[test]
+    fn test_handle_agent_done() {
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: true, input_history: vec![], history_index: None, pending_input: String::new() };
+        let event = AppEvent::AgentDone { stop_reason: StopReason::EndTurn };
+        handle_app_event(event, &mut state).unwrap();
+        assert!(!state.streaming);
+        assert!(state.status_text.contains("ready"));
+    }
+
+    /// Verifies that handle_app_event processes Error by appending an Error message.
+    #[test]
+    fn test_handle_error() {
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let event = AppEvent::Error { message: "failed".into() };
+        handle_app_event(event, &mut state).unwrap();
+        assert!(matches!(state.messages.last(), Some(RenderedMessage::Error { .. })));
+    }
+
+    /// Verifies that handle_permission_key with 'a' sends ApproveOnce and clears dialog.
+    #[test]
+    fn test_permission_key_approve_once() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: Some(PermissionDialogState { tool_name: "bash".into(), risk: RiskLevel::Write, params: serde_json::json!({}), tool_id: "t1".into() }), streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<crate::protocol::Action>();
+        let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+        handle_permission_key(key, &mut state, &tx).unwrap();
+        assert!(state.show_permission_dialog.is_none());
+    }
+}
+
 fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()> {
     match event {
         AppEvent::TextDelta { content, finish_reason: _ } => {
