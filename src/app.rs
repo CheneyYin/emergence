@@ -13,3 +13,27 @@ impl App {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_new_with_no_args() {
+        let app = App::new(None, None);
+        assert!(app.is_ok());
+    }
+
+    #[test]
+    fn test_app_new_with_session_and_model() {
+        let app = App::new(Some("sess-1".into()), Some("deepseek/v4".into()));
+        assert!(app.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_app_run_returns_ok() {
+        let app = App::new(None, None).unwrap();
+        let result = app.run().await;
+        assert!(result.is_ok());
+    }
+}

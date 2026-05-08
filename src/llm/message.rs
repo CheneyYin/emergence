@@ -342,4 +342,107 @@ mod tests {
         assert_eq!(parsed["description"], "read a file");
         assert_eq!(parsed["parameters"]["type"], "object");
     }
+
+    // ── Deserialization roundtrips ──
+
+    #[test]
+    fn test_chat_message_deserialize() {
+        let json = r#"{"role":"assistant","content":"response"}"#;
+        let msg: ChatMessage = serde_json::from_str(json).unwrap();
+        match msg.role {
+            Role::Assistant => {}
+            r => panic!("expected Assistant, got {:?}", r),
+        }
+        match &msg.content {
+            Content::Text(t) => assert_eq!(t, "response"),
+            other => panic!("expected Text, got {:?}", other),
+        }
+        assert!(msg.name.is_none());
+        assert!(msg.tool_call_id.is_none());
+    }
+
+    #[test]
+    fn test_chat_message_deserialize_with_optional_fields() {
+        let json = r#"{"role":"tool","content":"result","name":"read","tool_call_id":"tc_1"}"#;
+        let msg: ChatMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.name.as_deref(), Some("read"));
+        assert_eq!(msg.tool_call_id.as_deref(), Some("tc_1"));
+    }
+
+    #[test]
+    fn test_content_part_tool_use_deserialize() {
+        let json = r#"{"type":"tool_use","id":"t1","name":"read","input":{"path":"/x"}}"#;
+        let part: ContentPart = serde_json::from_str(json).unwrap();
+        match part {
+            ContentPart::ToolUse { id, name, input } => {
+                assert_eq!(id, "t1");
+                assert_eq!(name, "read");
+                assert_eq!(input["path"], "/x");
+            }
+            other => panic!("expected ToolUse, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_content_part_tool_result_deserialize() {
+        let json = r#"{"type":"tool_result","tool_use_id":"t1","content":"done"}"#;
+        let part: ContentPart = serde_json::from_str(json).unwrap();
+        match part {
+            ContentPart::ToolResult { tool_use_id, content, is_error } => {
+                assert_eq!(tool_use_id, "t1");
+                assert_eq!(content, "done");
+                assert!(is_error.is_none());
+            }
+            other => panic!("expected ToolResult, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_content_part_text_deserialize() {
+        let json = r#"{"type":"text","text":"hello"}"#;
+        let part: ContentPart = serde_json::from_str(json).unwrap();
+        assert_eq!(part, ContentPart::Text { text: "hello".into() });
+    }
+
+    #[test]
+    fn test_model_info_serialize() {
+        let model = ModelInfo {
+            id: "gpt-4".into(),
+            name: "GPT-4".into(),
+            max_tokens: 8192,
+        };
+        let json = serde_json::to_string(&model).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["id"], "gpt-4");
+        assert_eq!(parsed["name"], "GPT-4");
+        assert_eq!(parsed["max_tokens"], 8192);
+    }
+
+    #[test]
+    fn test_model_info_deserialize() {
+        let json = r#"{"id":"gpt-4","name":"GPT-4","max_tokens":8192}"#;
+        let model: ModelInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(model.id, "gpt-4");
+        assert_eq!(model.name, "GPT-4");
+        assert_eq!(model.max_tokens, 8192);
+    }
+
+    #[test]
+    fn test_usage_deserialize() {
+        let json = r#"{"input_tokens":100,"output_tokens":50}"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.input_tokens, 100);
+        assert_eq!(usage.output_tokens, 50);
+    }
+
+    #[test]
+    fn test_generation_config_deserialize_with_tools() {
+        let json = r#"{"max_tokens":200,"tools":[{"name":"read","description":"desc","parameters":{}}]}"#;
+        let config: GenerationConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.max_tokens, 200);
+        assert!(config.tools.is_some());
+        let tools = config.tools.unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "read");
+    }
 }

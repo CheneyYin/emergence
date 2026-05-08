@@ -395,6 +395,19 @@ mod tests {
         assert_eq!(thinking["budget_tokens"], 16000);
     }
 
+    #[test]
+    fn test_parse_sse_unknown_finish_reason_defaults_to_end_turn() {
+        let event = OpenAIAdapter::parse_sse_line(
+            r#"data: {"choices":[{"finish_reason":"some_unknown_reason","delta":{"content":""},"index":0}]}"#
+        );
+        match event {
+            Some(Ok(StreamEvent::Finish { stop_reason, .. })) => {
+                assert_eq!(stop_reason, StopReason::EndTurn);
+            }
+            other => panic!("expected Finish with EndTurn, got {:?}", other),
+        }
+    }
+
     // ── OpenAIAdapter::new ──
 
     #[test]
