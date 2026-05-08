@@ -4,6 +4,7 @@ pub mod config;
 pub mod hooks;
 pub mod llm;
 pub mod permissions;
+pub mod protocol;
 pub mod session;
 pub mod skills;
 pub mod tools;
