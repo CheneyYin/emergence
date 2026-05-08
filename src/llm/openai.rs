@@ -207,6 +207,25 @@ mod tests {
         )
     }
 
+    fn config() -> GenerationConfig {
+        GenerationConfig {
+            max_tokens: 100,
+            temperature: 0.0,
+            top_p: 1.0,
+            stop_sequences: vec![],
+            thinking: None,
+            tools: None,
+        }
+    }
+
+    #[test]
+    fn test_build_chat_request_sets_stream_true() {
+        let adapter = make_adapter();
+        let body = adapter.build_chat_request("m1", &[], &[], &config());
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(parsed["stream"], true);
+    }
+
     #[test]
     fn test_build_chat_request_basic() {
         let adapter = make_adapter();
@@ -219,7 +238,7 @@ mod tests {
             "deepseek-v4-pro",
             &messages,
             &[],
-            &GenerationConfig { max_tokens: 32000, temperature: 0.7, top_p: 1.0, stop_sequences: vec![], thinking: None, tools: None },
+            &GenerationConfig { max_tokens: 32000, temperature: 0.7, ..config() },
         );
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(parsed["model"], "deepseek-v4-pro");
@@ -238,19 +257,12 @@ mod tests {
         }];
         let body = adapter.build_chat_request(
             "m1", &[], &tools,
-            &GenerationConfig { max_tokens: 100, temperature: 0.0, top_p: 1.0, stop_sequences: vec![], thinking: None, tools: None },
+            &config(),
         );
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         let tool_arr = parsed["tools"].as_array().unwrap();
         assert_eq!(tool_arr.len(), 1);
         assert_eq!(tool_arr[0]["function"]["name"], "read");
-    }
-
-    #[test]
-    fn test_models() {
-        let adapter = make_adapter();
-        assert_eq!(adapter.models().len(), 1);
-        assert_eq!(adapter.models()[0].id, "deepseek-v4-pro");
     }
 
     #[test]
@@ -327,6 +339,12 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_sse_empty_choices_returns_none() {
+        let event = OpenAIAdapter::parse_sse_line(r#"data: {"choices":[]}"#);
+        assert!(event.is_none());
+    }
+
+    #[test]
     fn test_parse_sse_invalid_json_returns_none() {
         let event = OpenAIAdapter::parse_sse_line("data: not-json");
         assert!(event.is_none());
@@ -335,7 +353,7 @@ mod tests {
     #[test]
     fn test_parse_sse_finish_reason_tool_calls() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"finish_reason":"tool_calls","delta":{"content":""},"index":0}]}"#
+            r#"data: {"choices":[{"finish_reason":"tool_calls","delta":{"content":"done"},"index":0}]}"#
         );
         match event {
             Some(Ok(StreamEvent::Finish { stop_reason, .. })) => {
@@ -348,7 +366,7 @@ mod tests {
     #[test]
     fn test_parse_sse_finish_reason_length() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"finish_reason":"length","delta":{"content":""},"index":0}]}"#
+            r#"data: {"choices":[{"finish_reason":"length","delta":{"content":"done"},"index":0}]}"#
         );
         match event {
             Some(Ok(StreamEvent::Finish { stop_reason, .. })) => {
@@ -365,11 +383,7 @@ mod tests {
         let adapter = make_adapter();
         let body = adapter.build_chat_request(
             "m1", &[], &[],
-            &GenerationConfig {
-                max_tokens: 100, temperature: 0.0, top_p: 1.0,
-                stop_sequences: vec!["```".into(), "END".into()],
-                thinking: None, tools: None,
-            },
+            &GenerationConfig { stop_sequences: vec!["```".into(), "END".into()], ..config() },
         );
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         let stops = parsed["stop"].as_array().unwrap();
@@ -383,11 +397,7 @@ mod tests {
         let adapter = make_adapter();
         let body = adapter.build_chat_request(
             "m1", &[], &[],
-            &GenerationConfig {
-                max_tokens: 100, temperature: 0.0, top_p: 1.0,
-                stop_sequences: vec![],
-                thinking: Some(16000), tools: None,
-            },
+            &GenerationConfig { thinking: Some(16000), ..config() },
         );
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         let thinking = &parsed["thinking"];
@@ -398,7 +408,7 @@ mod tests {
     #[test]
     fn test_parse_sse_unknown_finish_reason_defaults_to_end_turn() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"finish_reason":"some_unknown_reason","delta":{"content":""},"index":0}]}"#
+            r#"data: {"choices":[{"finish_reason":"some_unknown_reason","delta":{"content":"done"},"index":0}]}"#
         );
         match event {
             Some(Ok(StreamEvent::Finish { stop_reason, .. })) => {
@@ -408,7 +418,14 @@ mod tests {
         }
     }
 
-    // ── OpenAIAdapter::new ──
+    // ── OpenAIAdapter structural ──
+
+    #[test]
+    fn test_models() {
+        let adapter = make_adapter();
+        assert_eq!(adapter.models().len(), 1);
+        assert_eq!(adapter.models()[0].id, "deepseek-v4-pro");
+    }
 
     #[test]
     fn test_new_trims_trailing_slash() {
