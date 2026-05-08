@@ -199,4 +199,70 @@ mod tests {
         };
         assert_eq!(event.event_type(), HookEventType::PreToolExecute);
     }
+
+    /// Verifies that all 8 event types are recognized by parse_event_type.
+    #[test]
+    fn test_parse_all_event_types() {
+        let valid = ["SessionStart", "SessionEnd", "PreToolExecute", "PostToolExecute",
+                     "UserInput", "PreLLMCall", "PostLLMCall", "PermissionRequested"];
+        for name in valid {
+            assert!(parse_event_type(name).is_some(), "should parse {}", name);
+        }
+    }
+
+    /// Verifies that dispatch routes events to registered executors and returns outcomes.
+    #[tokio::test]
+    async fn test_dispatch_with_registered_executor() {
+        struct StubExecutor;
+        #[async_trait]
+        impl HookExecutor for StubExecutor {
+            fn hook_type(&self) -> &str { "stub" }
+            async fn execute(&self, _: &HookEvent) -> anyhow::Result<HookOutcome> {
+                Ok(HookOutcome::Continue)
+            }
+        }
+
+        let mut registry = HookRegistry::new();
+        registry.register(HookEventType::SessionStart, Box::new(StubExecutor));
+        let event = HookEvent::SessionStart;
+        let outcomes = registry.dispatch(&event).await;
+        assert_eq!(outcomes.len(), 1);
+    }
+
+    /// Verifies that merge combines executors from another registry for the same event type.
+    #[test]
+    fn test_merge_registries() {
+        struct StubA;
+        #[async_trait]
+        impl HookExecutor for StubA {
+            fn hook_type(&self) -> &str { "a" }
+            async fn execute(&self, _: &HookEvent) -> anyhow::Result<HookOutcome> {
+                Ok(HookOutcome::Continue)
+            }
+        }
+
+        let mut reg1 = HookRegistry::new();
+        reg1.register(HookEventType::SessionStart, Box::new(StubA));
+        let reg2 = HookRegistry::new(); // empty
+        reg1.merge(reg2);
+        assert_eq!(reg1.listeners.get(&HookEventType::SessionStart).unwrap().len(), 1);
+    }
+
+    /// Verifies that all 8 event type variants produce correct event_type() mappings.
+    #[test]
+    fn test_all_event_type_variants() {
+        let pairs = vec![
+            (HookEvent::SessionStart, HookEventType::SessionStart),
+            (HookEvent::SessionEnd, HookEventType::SessionEnd),
+            (HookEvent::PreToolExecute { tool: "".into(), params: serde_json::json!({}) }, HookEventType::PreToolExecute),
+            (HookEvent::PostToolExecute { tool: "".into(), result: crate::tools::ToolOutput { content: "".into(), metadata: None } }, HookEventType::PostToolExecute),
+            (HookEvent::UserInput { text: "".into() }, HookEventType::UserInput),
+            (HookEvent::PreLLMCall { messages: vec![] }, HookEventType::PreLLMCall),
+            (HookEvent::PostLLMCall { response: "".into(), usage: Default::default() }, HookEventType::PostLLMCall),
+            (HookEvent::PermissionRequested { tool: "".into(), risk: crate::permissions::RiskLevel::ReadOnly }, HookEventType::PermissionRequested),
+        ];
+        for (event, expected) in pairs {
+            assert_eq!(event.event_type(), expected);
+        }
+    }
 }

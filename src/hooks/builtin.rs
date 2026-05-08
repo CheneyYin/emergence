@@ -169,3 +169,57 @@ impl HookExecutor for RateLimitListener {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verifies that ValidateToolListener aborts when a deny pattern matches.
+    #[tokio::test]
+    async fn test_validate_tool_denies_match() {
+        let config = serde_json::json!({"rules": [{"deny_patterns": ["rm -rf"]}]});
+        let listener = ValidateToolListener::new(config).unwrap();
+        let event = HookEvent::PreToolExecute {
+            tool: "bash".into(),
+            params: serde_json::json!({"command": "rm -rf /"}),
+        };
+        let outcome = listener.execute(&event).await.unwrap();
+        assert!(matches!(outcome, HookOutcome::Abort { .. }));
+    }
+
+    /// Verifies that ValidateToolListener continues when no pattern matches.
+    #[tokio::test]
+    async fn test_validate_tool_allows_safe() {
+        let config = serde_json::json!({"rules": [{"deny_patterns": ["rm -rf"]}]});
+        let listener = ValidateToolListener::new(config).unwrap();
+        let event = HookEvent::PreToolExecute {
+            tool: "bash".into(),
+            params: serde_json::json!({"command": "ls -la"}),
+        };
+        let outcome = listener.execute(&event).await.unwrap();
+        assert!(matches!(outcome, HookOutcome::Continue));
+    }
+
+    /// Verifies that RateLimitListener allows requests under the limit.
+    #[tokio::test]
+    async fn test_rate_limit_allows_under_limit() {
+        let config = serde_json::json!({"max_per_hour": 100});
+        let listener = RateLimitListener::new(config).unwrap();
+        let event = HookEvent::PreLLMCall { messages: vec![] };
+        let outcome = listener.execute(&event).await.unwrap();
+        assert!(matches!(outcome, HookOutcome::Continue));
+    }
+
+    /// Verifies that RateLimitListener aborts when limit is exceeded.
+    #[tokio::test]
+    async fn test_rate_limit_aborts_over_limit() {
+        let config = serde_json::json!({"max_per_hour": 1});
+        let listener = RateLimitListener::new(config).unwrap();
+        let event = HookEvent::PreLLMCall { messages: vec![] };
+        // First call should pass
+        let _ = listener.execute(&event).await.unwrap();
+        // Second call should exceed limit
+        let outcome = listener.execute(&event).await.unwrap();
+        assert!(matches!(outcome, HookOutcome::Abort { .. }));
+    }
+}
