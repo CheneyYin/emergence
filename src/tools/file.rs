@@ -179,6 +179,21 @@ mod tests {
         assert_eq!(tool.risk_level(&serde_json::json!({})), RiskLevel::ReadOnly);
     }
 
+    #[test]
+    fn test_read_name_and_description() {
+        let tool = ReadTool;
+        assert_eq!(tool.name(), "read");
+        assert!(tool.description().contains("读取"));
+    }
+
+    #[tokio::test]
+    async fn test_read_nonexistent_file_returns_error() {
+        let tool = ReadTool;
+        let params = serde_json::json!({"file_path": "/nonexistent/path/xyz.txt"});
+        let result = tool.execute(params).await;
+        assert!(result.is_err());
+    }
+
     // ---------- WriteTool ----------
 
     #[tokio::test]
@@ -197,6 +212,23 @@ mod tests {
     fn test_write_risk_level() {
         let tool = WriteTool;
         assert_eq!(tool.risk_level(&serde_json::json!({})), RiskLevel::Write);
+    }
+
+    #[test]
+    fn test_write_name_and_description() {
+        let tool = WriteTool;
+        assert_eq!(tool.name(), "write");
+        assert!(tool.description().contains("创建"));
+    }
+
+    #[tokio::test]
+    async fn test_write_metadata_contains_byte_count() {
+        let path = std::env::temp_dir().join("emergence_test_metadata.txt");
+        let tool = WriteTool;
+        let params = serde_json::json!({"file_path": path, "content": "1234567890"});
+        let output = tool.execute(params).await.unwrap();
+        assert_eq!(output.metadata.unwrap()["byte_count"], 10);
+        std::fs::remove_file(&path).ok();
     }
 
     // ---------- EditTool ----------
@@ -235,5 +267,82 @@ mod tests {
     fn test_edit_risk_level() {
         let tool = EditTool;
         assert_eq!(tool.risk_level(&serde_json::json!({})), RiskLevel::Write);
+    }
+
+    #[test]
+    fn test_edit_name_and_description() {
+        let tool = EditTool;
+        assert_eq!(tool.name(), "edit");
+        assert!(tool.description().contains("精确字符串替换"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_same_string_returns_noop() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "unchanged").unwrap();
+        let path = f.path().to_path_buf();
+
+        let tool = EditTool;
+        let params = serde_json::json!({
+            "file_path": path,
+            "old_string": "hello",
+            "new_string": "hello",
+        });
+        let output = tool.execute(params).await.unwrap();
+        assert!(output.content.contains("相同"));
+        assert!(output.metadata.is_none());
+        // 文件未被修改
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "unchanged");
+    }
+
+    #[tokio::test]
+    async fn test_edit_no_match_returns_error() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "some content").unwrap();
+        let path = f.path().to_path_buf();
+
+        let tool = EditTool;
+        let params = serde_json::json!({
+            "file_path": path,
+            "old_string": "nonexistent_text",
+            "new_string": "replacement",
+        });
+        let result = tool.execute(params).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("未找到匹配"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_multiple_matches_returns_error() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "dup dup dup").unwrap();
+        let path = f.path().to_path_buf();
+
+        let tool = EditTool;
+        let params = serde_json::json!({
+            "file_path": path,
+            "old_string": "dup",
+            "new_string": "replaced",
+        });
+        let result = tool.execute(params).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("3 处匹配"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_metadata_contains_replacements() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "hello world").unwrap();
+        let path = f.path().to_path_buf();
+
+        let tool = EditTool;
+        let params = serde_json::json!({
+            "file_path": path,
+            "old_string": "hello",
+            "new_string": "hi",
+        });
+        let output = tool.execute(params).await.unwrap();
+        assert_eq!(output.metadata.unwrap()["replacements"], 1);
     }
 }
