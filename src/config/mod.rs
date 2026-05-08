@@ -167,6 +167,7 @@ mod tests {
         TempDir::new().unwrap()
     }
 
+    /// Verifies that ConfigManager::load returns default settings when no config files exist.
     #[test]
     fn test_load_with_defaults() {
         let home = home_dir();
@@ -178,6 +179,7 @@ mod tests {
         assert_eq!(cm.settings.generation.max_tokens, 32000);
     }
 
+    /// Verifies that the CLI model argument overrides the default model setting.
     #[test]
     fn test_cli_model_overrides() {
         let home = home_dir();
@@ -191,6 +193,7 @@ mod tests {
         assert_eq!(cm.settings.model, "gpt-4");
     }
 
+    /// Verifies that ConfigManager::reload() succeeds when no config files exist.
     #[test]
     fn test_reload_is_ok() {
         let home = home_dir();
@@ -201,6 +204,7 @@ mod tests {
         assert!(cm.reload().is_ok());
     }
 
+    /// Verifies that session_store_dir() expands ~/ to the home directory path.
     #[test]
     fn test_session_store_dir_expands_tilde() {
         let home = home_dir();
@@ -212,6 +216,7 @@ mod tests {
         assert!(!dir.to_string_lossy().starts_with('~'));
     }
 
+    /// Verifies that generation_config() correctly converts Settings into GenerationConfig.
     #[test]
     fn test_generation_config_conversion() {
         let home = home_dir();
@@ -227,6 +232,7 @@ mod tests {
         assert!(gc.tools.is_none());
     }
 
+    /// Verifies that ConfigManager::load reads and applies settings from a user settings file.
     #[test]
     fn test_load_with_user_settings_file() {
         let home = home_dir();

@@ -154,6 +154,7 @@ mod tests {
     use super::*;
     use crate::session::{Session, SessionKey};
 
+    /// Verifies that a session can be saved and then loaded back with the same ID.
     #[tokio::test]
     async fn test_save_and_load() {
         let dir = tempfile::tempdir().unwrap();
@@ -167,6 +168,7 @@ mod tests {
         assert_eq!(loaded.unwrap().id, "2026-05-06-test");
     }
 
+    /// Verifies that list() returns all saved sessions.
     #[tokio::test]
     async fn test_list_sessions() {
         let dir = tempfile::tempdir().unwrap();
@@ -179,6 +181,7 @@ mod tests {
         assert_eq!(list.len(), 2);
     }
 
+    /// Verifies that a session set with an alias can be loaded via SessionKey::Alias.
     #[tokio::test]
     async fn test_set_alias_and_load_by_alias() {
         let dir = tempfile::tempdir().unwrap();
@@ -192,6 +195,7 @@ mod tests {
         assert_eq!(loaded.unwrap().id, "s1");
     }
 
+    /// Verifies that a deleted session cannot be loaded.
     #[tokio::test]
     async fn test_delete() {
         let dir = tempfile::tempdir().unwrap();

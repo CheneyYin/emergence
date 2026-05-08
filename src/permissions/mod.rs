@@ -49,6 +49,7 @@ impl PermissionStore {
 mod tests {
     use super::*;
 
+    /// Verifies that is_allowed() correctly returns true only after approve_always() is called for the matching tool and risk level.
     #[test]
     fn test_is_allowed() {
         let mut store = PermissionStore::new();
@@ -59,6 +60,7 @@ mod tests {
         assert!(!store.is_allowed("bash", RiskLevel::System));
     }
 
+    /// Verifies that clear() removes all previously granted permanent approvals.
     #[test]
     fn test_clear() {
         let mut store = PermissionStore::new();
@@ -68,12 +70,14 @@ mod tests {
         assert!(!store.is_allowed("bash", RiskLevel::Write));
     }
 
+    /// Verifies that RiskLevel variants follow the expected ordering: ReadOnly < Write < System.
     #[test]
     fn test_risk_level_ordering() {
         assert!(RiskLevel::ReadOnly < RiskLevel::Write);
         assert!(RiskLevel::Write < RiskLevel::System);
     }
 
+    /// Verifies that permissions for different tools and risk levels are independently tracked.
     #[test]
     fn test_multiple_tools_independent() {
         let mut store = PermissionStore::new();
@@ -86,6 +90,7 @@ mod tests {
         assert!(!store.is_allowed("bash", RiskLevel::ReadOnly));
     }
 
+    /// Verifies that a single tool can be approved at multiple distinct risk levels.
     #[test]
     fn test_same_tool_multiple_risk_levels() {
         let mut store = PermissionStore::new();
@@ -98,6 +103,7 @@ mod tests {
         assert!(!store.is_allowed("bash", RiskLevel::ReadOnly));
     }
 
+    /// Verifies that a default PermissionStore grants no permissions for any tool.
     #[test]
     fn test_default_is_empty() {
         let store = PermissionStore::default();

@@ -76,6 +76,7 @@ mod tests {
         }
     }
 
+    /// Verifies that a registered tool can be retrieved by name, unknown names return None, and definitions are produced correctly.
     #[test]
     fn test_register_and_get() {
         let mut registry = ToolRegistry::new();
@@ -85,6 +86,7 @@ mod tests {
         assert_eq!(registry.definitions().len(), 1);
     }
 
+    /// Verifies that risk_level returns the expected ReadOnly level for a registered tool.
     #[test]
     fn test_risk_level() {
         let mut registry = ToolRegistry::new();
@@ -92,6 +94,7 @@ mod tests {
         assert_eq!(registry.risk_level("test", &serde_json::json!({})), Some(RiskLevel::ReadOnly));
     }
 
+    /// Verifies that executing a registered tool returns the expected output content.
     #[tokio::test]
     async fn test_execute() {
         let mut registry = ToolRegistry::new();

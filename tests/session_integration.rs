@@ -13,6 +13,7 @@ fn make_user_msg(text: &str) -> ChatMessage {
 
 // ── Session + SessionManager ──
 
+/// Verifies that a freshly created Session has the expected initial state: empty turns, no skills, no alias, zero messages.
 #[test]
 fn test_session_lifecycle() {
     let session = Session::new("integration-test-1".into());
@@ -23,6 +24,7 @@ fn test_session_lifecycle() {
     assert_eq!(session.message_count(), 0);
 }
 
+/// Verifies that SessionManager can complete multiple full turn cycles (begin_turn, push, complete_turn) and accumulate messages.
 #[test]
 fn test_session_manager_full_flow() {
     let mut sm = SessionManager::new("integration-flow".into());
@@ -38,6 +40,7 @@ fn test_session_manager_full_flow() {
     assert!(sm.session().message_count() > 0);
 }
 
+/// Verifies that SessionManager can activate and deactivate skills, tracking them as a list that persists across turns.
 #[test]
 fn test_session_manager_skills() {
     let mut sm = SessionManager::new("skills-test".into());
@@ -50,6 +53,7 @@ fn test_session_manager_skills() {
     assert_eq!(sm.active_skills(), &["typescript"]);
 }
 
+/// Verifies that SessionManager.set_alias() is reflected in the underlying Session's alias field.
 #[test]
 fn test_session_manager_alias() {
     let mut sm = SessionManager::new("alias-test".into());
@@ -59,6 +63,7 @@ fn test_session_manager_alias() {
 
 // ── JsonFileStore persistence ──
 
+/// Verifies that a SessionManager's session can be saved to JsonFileStore and reloaded by alias with all data intact.
 #[tokio::test]
 async fn test_save_and_load_roundtrip() {
     let dir = tempfile::tempdir().unwrap();
@@ -78,6 +83,7 @@ async fn test_save_and_load_roundtrip() {
     assert_eq!(session.message_count(), 1);
 }
 
+/// Verifies that JsonFileStore can list multiple sessions and delete a specific session by ID.
 #[tokio::test]
 async fn test_store_list_and_delete() {
     let dir = tempfile::tempdir().unwrap();
@@ -97,6 +103,7 @@ async fn test_store_list_and_delete() {
     assert!(store.load(&SessionKey::Id("list-2".into())).await.unwrap().is_none());
 }
 
+/// Verifies that JsonFileStore.load() returns None for a session ID that does not exist.
 #[tokio::test]
 async fn test_store_load_nonexistent() {
     let dir = tempfile::tempdir().unwrap();
@@ -106,6 +113,7 @@ async fn test_store_load_nonexistent() {
     assert!(result.is_none());
 }
 
+/// Verifies that JsonFileStore can load a session by alias and by ID, and returns None for a nonexistent alias.
 #[tokio::test]
 async fn test_store_alias_resolution() {
     let dir = tempfile::tempdir().unwrap();

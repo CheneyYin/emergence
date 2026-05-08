@@ -21,6 +21,7 @@ fn write_settings(dir: &TempDir, content: &str) {
 
 // ── env var expansion ──
 
+/// Verifies that `${VAR}` placeholders in settings JSON are expanded from environment variables when ConfigManager loads.
 #[test]
 fn test_expand_env_vars_in_settings_file() {
     std::env::set_var("EMERGENCE_INTEGRATION_TEST_MODEL", "env-model");
@@ -35,6 +36,7 @@ fn test_expand_env_vars_in_settings_file() {
     std::env::remove_var("EMERGENCE_INTEGRATION_TEST_MODEL");
 }
 
+/// Verifies that `env::expand_env_vars` replaces `${HOME}` with the actual home directory path.
 #[test]
 fn test_expand_env_vars_direct_call() {
     let result = env::expand_env_vars("hello_${HOME}_world");
@@ -45,6 +47,7 @@ fn test_expand_env_vars_direct_call() {
 
 // ── ConfigManager lifecycle ──
 
+/// Verifies that ConfigManager loads with default settings when no config file is present, and that reload() succeeds.
 #[test]
 fn test_config_manager_key_behavior() {
     let home = home_dir();
@@ -61,6 +64,7 @@ fn test_config_manager_key_behavior() {
 
 // ── Settings merging ──
 
+/// Verifies that project-level settings override user-level settings on key overlap, while non-overlapping user keys survive.
 #[test]
 fn test_project_settings_override_user_settings() {
     let home = home_dir();
@@ -77,6 +81,7 @@ fn test_project_settings_override_user_settings() {
     assert_eq!(cm.settings.version, 2);
 }
 
+/// Verifies that when no project settings exist, ConfigManager preserves all user-level settings unchanged.
 #[test]
 fn test_user_settings_preserved_when_no_project_settings() {
     let home = home_dir();
@@ -91,6 +96,7 @@ fn test_user_settings_preserved_when_no_project_settings() {
     assert_eq!(cm.settings.version, 5);
 }
 
+/// Verifies that a CLI-provided model flag takes precedence over both user-level and project-level settings.
 #[test]
 fn test_cli_model_overrides_both() {
     let home = home_dir();
@@ -110,6 +116,7 @@ fn test_cli_model_overrides_both() {
 
 // ── GenerationConfig pipeline ──
 
+/// Verifies that `generation_config()` flows from a Settings object through ConfigManager and reflects all sub-fields.
 #[test]
 fn test_generation_config_from_settings() {
     let home = home_dir();
@@ -134,6 +141,7 @@ fn test_generation_config_from_settings() {
 
 // ── Session store dir ──
 
+/// Verifies that `session_store_dir()` expands a tilde-prefixed default to an absolute path.
 #[test]
 fn test_session_store_dir_expands_tilde() {
     let home = home_dir();
@@ -148,6 +156,7 @@ fn test_session_store_dir_expands_tilde() {
 
 // ── Settings serde through public API ──
 
+/// Verifies that a full Settings JSON roundtrips through serde without data loss, including providers, permissions, tools, and session config.
 #[test]
 fn test_settings_roundtrip() {
     let json = r#"{
@@ -179,6 +188,7 @@ fn test_settings_roundtrip() {
 
 // ── Defaults with partial JSON ──
 
+/// Verifies that a minimal Settings JSON deserializes with all unspecified fields taking documented defaults.
 #[test]
 fn test_settings_partial_json_fills_defaults() {
     let json = r#"{"model":"partial"}"#;

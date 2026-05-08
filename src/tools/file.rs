@@ -151,6 +151,7 @@ mod tests {
 
     // ---------- ReadTool ----------
 
+    /// Verifies that ReadTool reads file content and includes expected text in the output.
     #[tokio::test]
     async fn test_read_file() {
         let mut f = NamedTempFile::new().unwrap();
@@ -161,6 +162,7 @@ mod tests {
         assert!(output.content.contains("line1"));
     }
 
+    /// Verifies that ReadTool respects offset and limit parameters to return only a subset of lines.
     #[tokio::test]
     async fn test_read_file_with_offset_limit() {
         let mut f = NamedTempFile::new().unwrap();
@@ -173,12 +175,14 @@ mod tests {
         assert!(!output.content.contains("line4"));
     }
 
+    /// Verifies that ReadTool reports ReadOnly risk level.
     #[test]
     fn test_read_risk_level() {
         let tool = ReadTool;
         assert_eq!(tool.risk_level(&serde_json::json!({})), RiskLevel::ReadOnly);
     }
 
+    /// Verifies that ReadTool returns the correct name and a non-empty description.
     #[test]
     fn test_read_name_and_description() {
         let tool = ReadTool;
@@ -186,6 +190,7 @@ mod tests {
         assert!(tool.description().contains("读取"));
     }
 
+    /// Verifies that ReadTool returns an error when the target file does not exist.
     #[tokio::test]
     async fn test_read_nonexistent_file_returns_error() {
         let tool = ReadTool;
@@ -196,6 +201,7 @@ mod tests {
 
     // ---------- WriteTool ----------
 
+    /// Verifies that WriteTool creates a file with the expected content on disk.
     #[tokio::test]
     async fn test_write_file() {
         let path = std::env::temp_dir().join("emergence_test_write.txt");
@@ -208,12 +214,14 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
+    /// Verifies that WriteTool reports Write risk level.
     #[test]
     fn test_write_risk_level() {
         let tool = WriteTool;
         assert_eq!(tool.risk_level(&serde_json::json!({})), RiskLevel::Write);
     }
 
+    /// Verifies that WriteTool returns the correct name and a non-empty description.
     #[test]
     fn test_write_name_and_description() {
         let tool = WriteTool;
@@ -221,6 +229,7 @@ mod tests {
         assert!(tool.description().contains("创建"));
     }
 
+    /// Verifies that WriteTool's output metadata includes the correct byte count of written content.
     #[tokio::test]
     async fn test_write_metadata_contains_byte_count() {
         let path = std::env::temp_dir().join("emergence_test_metadata.txt");
@@ -233,6 +242,7 @@ mod tests {
 
     // ---------- EditTool ----------
 
+    /// Verifies that EditTool performs an exact string replacement and updates the file on disk.
     #[tokio::test]
     async fn test_edit_file_replace() {
         let mut f = NamedTempFile::new().unwrap();
@@ -251,6 +261,7 @@ mod tests {
         assert_eq!(edited, "hi world");
     }
 
+    /// Verifies that EditTool returns an error when the target file does not exist.
     #[tokio::test]
     async fn test_edit_file_not_found_returns_error() {
         let tool = EditTool;
@@ -263,12 +274,14 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Verifies that EditTool reports Write risk level.
     #[test]
     fn test_edit_risk_level() {
         let tool = EditTool;
         assert_eq!(tool.risk_level(&serde_json::json!({})), RiskLevel::Write);
     }
 
+    /// Verifies that EditTool returns the correct name and a non-empty description.
     #[test]
     fn test_edit_name_and_description() {
         let tool = EditTool;
@@ -276,6 +289,7 @@ mod tests {
         assert!(tool.description().contains("精确字符串替换"));
     }
 
+    /// Verifies that EditTool returns a no-op result when old_string equals new_string without modifying the file.
     #[tokio::test]
     async fn test_edit_same_string_returns_noop() {
         let mut f = NamedTempFile::new().unwrap();
@@ -296,6 +310,7 @@ mod tests {
         assert_eq!(content, "unchanged");
     }
 
+    /// Verifies that EditTool returns an error when old_string is not found in the file.
     #[tokio::test]
     async fn test_edit_no_match_returns_error() {
         let mut f = NamedTempFile::new().unwrap();
@@ -313,6 +328,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("未找到匹配"));
     }
 
+    /// Verifies that EditTool returns an error when old_string appears multiple times and is not unique.
     #[tokio::test]
     async fn test_edit_multiple_matches_returns_error() {
         let mut f = NamedTempFile::new().unwrap();
@@ -330,6 +346,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("3 处匹配"));
     }
 
+    /// Verifies that EditTool's output metadata includes the correct replacement count.
     #[tokio::test]
     async fn test_edit_metadata_contains_replacements() {
         let mut f = NamedTempFile::new().unwrap();

@@ -218,6 +218,7 @@ mod tests {
         }
     }
 
+    /// Verifies that all chat requests have `stream=true` set by default for SSE streaming.
     #[test]
     fn test_build_chat_request_sets_stream_true() {
         let adapter = make_adapter();
@@ -226,6 +227,7 @@ mod tests {
         assert_eq!(parsed["stream"], true);
     }
 
+    /// Verifies that basic request fields (model, max_tokens, temperature, messages) are correctly serialized.
     #[test]
     fn test_build_chat_request_basic() {
         let adapter = make_adapter();
@@ -247,6 +249,7 @@ mod tests {
         assert_eq!(parsed["messages"][0]["content"], "hello");
     }
 
+    /// Verifies that tool definitions are correctly serialized into OpenAI-compatible function-calling format.
     #[test]
     fn test_build_chat_request_with_tools() {
         let adapter = make_adapter();
@@ -265,6 +268,7 @@ mod tests {
         assert_eq!(tool_arr[0]["function"]["name"], "read");
     }
 
+    /// Verifies that a text content delta in an SSE line is parsed into StreamEvent::TextDelta.
     #[test]
     fn test_parse_sse_text_delta() {
         let event = OpenAIAdapter::parse_sse_line(
@@ -276,6 +280,7 @@ mod tests {
         }
     }
 
+    /// Verifies that a finish event with usage data is parsed into StreamEvent::Finish with correct stop_reason and token counts.
     #[test]
     fn test_parse_sse_finish() {
         let event = OpenAIAdapter::parse_sse_line(
@@ -293,6 +298,7 @@ mod tests {
 
     // ── parse_sse_line edge cases ──
 
+    /// Verifies that the SSE [DONE] signal is parsed into StreamEvent::Finish with default EndTurn and zero usage.
     #[test]
     fn test_parse_sse_done_signal() {
         let event = OpenAIAdapter::parse_sse_line("data: [DONE]");
@@ -306,6 +312,7 @@ mod tests {
         }
     }
 
+    /// Verifies that a tool_call delta in an SSE line is parsed into StreamEvent::ToolCallDelta with correct fields.
     #[test]
     fn test_parse_sse_tool_call_delta() {
         let event = OpenAIAdapter::parse_sse_line(
@@ -321,6 +328,7 @@ mod tests {
         }
     }
 
+    /// Verifies that a reasoning_content delta in an SSE line is parsed into StreamEvent::ThinkingDelta.
     #[test]
     fn test_parse_sse_thinking_delta() {
         let event = OpenAIAdapter::parse_sse_line(
@@ -332,24 +340,28 @@ mod tests {
         }
     }
 
+    /// Verifies that non-data SSE lines (e.g., "event: ping") are ignored by parse_sse_line.
     #[test]
     fn test_parse_sse_non_data_line_returns_none() {
         let event = OpenAIAdapter::parse_sse_line("event: ping");
         assert!(event.is_none());
     }
 
+    /// Verifies that SSE data with an empty choices array is ignored (returns None).
     #[test]
     fn test_parse_sse_empty_choices_returns_none() {
         let event = OpenAIAdapter::parse_sse_line(r#"data: {"choices":[]}"#);
         assert!(event.is_none());
     }
 
+    /// Verifies that malformed JSON in SSE data does not cause a panic and returns None.
     #[test]
     fn test_parse_sse_invalid_json_returns_none() {
         let event = OpenAIAdapter::parse_sse_line("data: not-json");
         assert!(event.is_none());
     }
 
+    /// Verifies that finish_reason=tool_calls is mapped to StopReason::ToolUse.
     #[test]
     fn test_parse_sse_finish_reason_tool_calls() {
         let event = OpenAIAdapter::parse_sse_line(
@@ -363,6 +375,7 @@ mod tests {
         }
     }
 
+    /// Verifies that finish_reason=length is mapped to StopReason::MaxTokens.
     #[test]
     fn test_parse_sse_finish_reason_length() {
         let event = OpenAIAdapter::parse_sse_line(
@@ -378,6 +391,7 @@ mod tests {
 
     // ── build_chat_request edge cases ──
 
+    /// Verifies that stop sequences are serialized into the request body as a "stop" array.
     #[test]
     fn test_build_chat_request_with_stop_sequences() {
         let adapter = make_adapter();
@@ -392,6 +406,7 @@ mod tests {
         assert_eq!(stops[1], "END");
     }
 
+    /// Verifies that the thinking configuration is serialized into the request body with type and budget_tokens.
     #[test]
     fn test_build_chat_request_with_thinking() {
         let adapter = make_adapter();
@@ -405,6 +420,7 @@ mod tests {
         assert_eq!(thinking["budget_tokens"], 16000);
     }
 
+    /// Verifies that an unrecognized finish_reason defaults to StopReason::EndTurn for graceful fallback.
     #[test]
     fn test_parse_sse_unknown_finish_reason_defaults_to_end_turn() {
         let event = OpenAIAdapter::parse_sse_line(
@@ -420,6 +436,7 @@ mod tests {
 
     // ── OpenAIAdapter structural ──
 
+    /// Verifies that the adapter returns the list of models it was initialized with.
     #[test]
     fn test_models() {
         let adapter = make_adapter();
@@ -427,6 +444,7 @@ mod tests {
         assert_eq!(adapter.models()[0].id, "deepseek-v4-pro");
     }
 
+    /// Verifies that trailing slashes in base_url are stripped during construction.
     #[test]
     fn test_new_trims_trailing_slash() {
         let adapter = OpenAIAdapter::new(

@@ -5,6 +5,7 @@ use emergence::tools::bash::BashTool;
 use emergence::tools::web::{WebFetchTool, WebSearchTool};
 use emergence::permissions::RiskLevel;
 
+/// Verifies that ToolRegistry can register all real tool types and each can be retrieved by its canonical name.
 #[test]
 fn test_registry_with_real_tools() {
     let mut registry = ToolRegistry::new();
@@ -28,6 +29,7 @@ fn test_registry_with_real_tools() {
     assert!(registry.get("web_search").is_some());
 }
 
+/// Verifies that ToolRegistry.definitions() returns tool definitions containing descriptions and parameters from real tool implementations.
 #[test]
 fn test_registry_definitions_output() {
     let mut registry = ToolRegistry::new();
@@ -40,6 +42,7 @@ fn test_registry_definitions_output() {
     assert_eq!(read_def.parameters["type"], "object");
 }
 
+/// Verifies that ToolRegistry.risk_level() returns appropriate RiskLevel per tool and that BashTool risk depends on command content.
 #[test]
 fn test_registry_risk_levels() {
     let mut registry = ToolRegistry::new();
@@ -62,6 +65,7 @@ fn test_registry_risk_levels() {
     );
 }
 
+/// Verifies that ToolRegistry.execute() can run a ReadTool on an actual file and returns its content.
 #[tokio::test]
 async fn test_registry_execute_read_tool() {
     let mut registry = ToolRegistry::new();
@@ -72,6 +76,7 @@ async fn test_registry_execute_read_tool() {
     assert!(output.content.contains("行"));
 }
 
+/// Verifies that ToolRegistry.execute() returns an error for an unregistered tool name.
 #[tokio::test]
 async fn test_registry_execute_unknown_tool_errors() {
     let registry = ToolRegistry::new();

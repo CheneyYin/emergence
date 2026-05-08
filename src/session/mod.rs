@@ -243,6 +243,7 @@ mod tests {
         }
     }
 
+    /// Verifies that begin_turn() and complete_turn() correctly transition turn status from InProgress to Completed.
     #[test]
     fn test_begin_and_complete_turn() {
         let mut sm = SessionManager::new("test-1".into());
@@ -255,6 +256,7 @@ mod tests {
         assert_eq!(sm.current_turn().unwrap().status, TurnStatus::Completed);
     }
 
+    /// Verifies that push() appends a message to the current in-progress turn.
     #[test]
     fn test_push_message() {
         let mut sm = SessionManager::new("test-2".into());
@@ -263,6 +265,7 @@ mod tests {
         assert_eq!(sm.current_turn().unwrap().messages.len(), 2);
     }
 
+    /// Verifies that build_context() produces a message list with a system prompt and user messages.
     #[test]
     fn test_build_context() {
         let mut sm = SessionManager::new("test-3".into());
@@ -274,6 +277,7 @@ mod tests {
         assert!(ctx.iter().any(|m| matches!(&m.content, Content::Text(t) if t == "hello")));
     }
 
+    /// Verifies that estimated_tokens() returns a positive count for non-empty conversation turns.
     #[test]
     fn test_estimated_tokens_positive() {
         let mut sm = SessionManager::new("test-4".into());
@@ -282,6 +286,7 @@ mod tests {
         assert!(tokens > 0);
     }
 
+    /// Verifies that clear() removes all turns and resets the session state.
     #[test]
     fn test_clear() {
         let mut sm = SessionManager::new("test-5".into());
@@ -291,6 +296,7 @@ mod tests {
         assert_eq!(sm.turns().len(), 0);
     }
 
+    /// Verifies that push() returns an error when no turn has been started.
     #[test]
     fn test_push_without_turn_returns_error() {
         let mut sm = SessionManager::new("test-6".into());
@@ -298,6 +304,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Verifies that complete_turn() returns an error when no turn is in progress.
     #[test]
     fn test_complete_without_turn_returns_error() {
         let mut sm = SessionManager::new("test-7".into());
@@ -305,6 +312,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Verifies that SessionManager::load() correctly restores state from an existing Session with multiple turns.
     #[test]
     fn test_load_from_existing_session() {
         let mut sm = SessionManager::new("test-8".into());
@@ -319,6 +327,7 @@ mod tests {
         assert_eq!(sm2.current_turn().unwrap().messages.len(), 1);
     }
 
+    /// Verifies that activate_skill() and deactivate_skill() correctly manage the active skills list without duplicates.
     #[test]
     fn test_skill_management() {
         let mut sm = SessionManager::new("test-9".into());
@@ -335,6 +344,7 @@ mod tests {
         assert_eq!(sm.active_skills(), &["rust"]);
     }
 
+    /// Verifies that set_alias() stores the alias and message_count() sums messages across all turns.
     #[test]
     fn test_set_alias_and_message_count() {
         let mut sm = SessionManager::new("test-10".into());
@@ -348,6 +358,7 @@ mod tests {
         assert_eq!(sm.session().message_count(), 3);
     }
 
+    /// Verifies that should_compact() returns false for empty sessions and true when token estimate exceeds 80% of the threshold.
     #[test]
     fn test_should_compact() {
         let mut sm = SessionManager::new("test-11".into());

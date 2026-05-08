@@ -134,6 +134,7 @@ mod tests {
     use super::*;
     use crate::permissions::RiskLevel;
 
+    /// Verifies that strip_html_tags removes all HTML tags and preserves text content.
     #[test]
     fn test_strip_html_tags() {
         let html = "<html><body><p>Hello</p><p>World</p></body></html>";
@@ -142,6 +143,7 @@ mod tests {
         assert!(text.contains("World"));
     }
 
+    /// Verifies that WebFetchTool reports System risk level.
     #[test]
     fn test_web_fetch_risk() {
         assert_eq!(
@@ -150,6 +152,7 @@ mod tests {
         );
     }
 
+    /// Verifies that WebSearchTool reports System risk level.
     #[test]
     fn test_web_search_risk() {
         assert_eq!(
@@ -158,6 +161,7 @@ mod tests {
         );
     }
 
+    /// Verifies that WebFetchTool returns the correct name and declares "url" as a required parameter.
     #[test]
     fn test_web_fetch_name_and_parameters() {
         let tool = WebFetchTool;
@@ -166,6 +170,7 @@ mod tests {
         assert!(params["required"].as_array().unwrap().contains(&serde_json::json!("url")));
     }
 
+    /// Verifies that WebSearchTool returns the correct name and declares "query" as a required parameter.
     #[test]
     fn test_web_search_name_and_parameters() {
         let tool = WebSearchTool;
@@ -174,6 +179,7 @@ mod tests {
         assert!(params["required"].as_array().unwrap().contains(&serde_json::json!("query")));
     }
 
+    /// Verifies that strip_html_tags correctly decodes HTML entities into their character equivalents.
     #[test]
     fn test_strip_html_entities() {
         let html = "<p>&amp; &lt; &gt; &quot; &nbsp;</p>";
@@ -185,6 +191,7 @@ mod tests {
         assert!(!text.contains("nbsp"));
     }
 
+    /// Verifies that strip_html_tags collapses multiple consecutive newlines into at most a single blank line.
     #[test]
     fn test_strip_html_multiline() {
         let html = "<div>\n\n<p>A</p>\n\n\n<p>B</p>\n\n</div>";
@@ -193,18 +200,21 @@ mod tests {
         assert!(!text.contains("\n\n\n"));
     }
 
+    /// Verifies that WebFetchTool's description contains the word "HTTP".
     #[test]
     fn test_web_fetch_description() {
         let tool = WebFetchTool;
         assert!(tool.description().contains("HTTP"));
     }
 
+    /// Verifies that WebSearchTool's description contains Chinese text for "search".
     #[test]
     fn test_web_search_description() {
         let tool = WebSearchTool;
         assert!(tool.description().contains("搜索"));
     }
 
+    /// Verifies that WebFetchTool returns an error containing "url" when no URL parameter is provided.
     #[tokio::test]
     async fn test_web_fetch_missing_url() {
         let tool = WebFetchTool;
@@ -213,6 +223,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("url"));
     }
 
+    /// Verifies that WebSearchTool returns an error containing "query" when no query parameter is provided.
     #[tokio::test]
     async fn test_web_search_missing_query() {
         let tool = WebSearchTool;
@@ -221,12 +232,14 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("query"));
     }
 
+    /// Verifies that extract_search_results returns an empty list when the HTML contains no result links.
     #[test]
     fn test_extract_search_results_empty() {
         let results = extract_search_results("<html><body>no results</body></html>");
         assert!(results.is_empty());
     }
 
+    /// Verifies that extract_search_results correctly parses a result link's title and URL.
     #[test]
     fn test_extract_search_results_parses_links() {
         let html = r#"<a class="result__a" href="https://example.com">Example Title</a>"#;

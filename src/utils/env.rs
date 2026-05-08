@@ -12,6 +12,7 @@ pub fn expand_env_vars(value: &str) -> String {
 mod tests {
     use super::*;
 
+    /// Verifies that ${VAR_NAME} placeholders are replaced with environment variable values.
     #[test]
     fn test_expand_env_var() {
         std::env::set_var("EMERGENCE_TEST_VAR", "expanded_value");
@@ -20,6 +21,7 @@ mod tests {
         std::env::remove_var("EMERGENCE_TEST_VAR");
     }
 
+    /// Verifies that undefined variable placeholders remain unchanged rather than being replaced.
     #[test]
     fn test_missing_env_var_keeps_placeholder() {
         let result = expand_env_vars("${NONEXISTENT_VAR_XYZ_12345}");

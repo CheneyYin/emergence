@@ -26,18 +26,21 @@ impl App {
 mod tests {
     use super::*;
 
+    /// Verifies that creating an App with no arguments succeeds.
     #[test]
     fn test_app_new_with_no_args() {
         let app = App::new(None, None);
         assert!(app.is_ok());
     }
 
+    /// Verifies that creating an App with both session and model arguments succeeds.
     #[test]
     fn test_app_new_with_session_and_model() {
         let app = App::new(Some("sess-1".into()), Some("deepseek/v4".into()));
         assert!(app.is_ok());
     }
 
+    /// Verifies that session() and model() return the values passed to new().
     #[test]
     fn test_app_new_stores_fields() {
         let app = App::new(Some("sess-1".into()), Some("deepseek/v4".into())).unwrap();
@@ -45,6 +48,7 @@ mod tests {
         assert_eq!(app.model(), Some("deepseek/v4"));
     }
 
+    /// Verifies that App::run() returns Ok when called with default arguments.
     #[tokio::test]
     async fn test_app_run_returns_ok() {
         let app = App::new(None, None).unwrap();

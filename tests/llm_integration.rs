@@ -2,6 +2,7 @@ use emergence::llm::*;
 
 // ── Message roundtrip through public API ──
 
+/// Verifies that ChatMessage roundtrips through serde JSON serialization and deserialization without data loss.
 #[test]
 fn test_message_serialize_deserialize_roundtrip() {
     let original = ChatMessage {
@@ -15,6 +16,7 @@ fn test_message_serialize_deserialize_roundtrip() {
     assert_eq!(original, parsed);
 }
 
+/// Verifies that a ChatMessage with Tool role, name, and tool_call_id roundtrips through serde correctly.
 #[test]
 fn test_message_with_tool_call_id_roundtrip() {
     let original = ChatMessage {
@@ -43,6 +45,7 @@ fn make_adapter() -> OpenAIAdapter {
     )
 }
 
+/// Verifies that OpenAIAdapter.models() returns the list of ModelInfo passed at construction, confirming the adapter's public model-listing contract.
 #[test]
 fn test_openai_adapter_models() {
     let adapter = make_adapter();
@@ -52,6 +55,7 @@ fn test_openai_adapter_models() {
     assert_eq!(models[1].id, "gpt-3.5");
 }
 
+/// Verifies that build_chat_request produces a JSON body containing all GenerationConfig fields, stream=true, tools, and thinking budget.
 #[test]
 fn test_openai_adapter_build_request_includes_all_fields() {
     let adapter = make_adapter();
@@ -95,6 +99,7 @@ fn test_openai_adapter_build_request_includes_all_fields() {
 
 // ── ProviderRegistry with real adapter ──
 
+/// Verifies that ProviderRegistry.get() returns a real adapter and correctly exposes its models.
 #[test]
 fn test_registry_with_real_adapter() {
     let mut registry = ProviderRegistry::new();
@@ -105,6 +110,7 @@ fn test_registry_with_real_adapter() {
     assert_eq!(provider.models()[0].id, "gpt-4");
 }
 
+/// Verifies that ProviderRegistry can hold multiple named adapters, each returning its own distinct model set.
 #[test]
 fn test_registry_multiple_adapters() {
     let mut registry = ProviderRegistry::new();
@@ -126,6 +132,7 @@ fn test_registry_multiple_adapters() {
 
 // ── StreamEvent enumeration ──
 
+/// Verifies that all four StreamEvent variants can be constructed and their Debug output contains the expected variant name.
 #[test]
 fn test_stream_event_variants() {
     let text = StreamEvent::TextDelta("hello".into());
@@ -149,6 +156,7 @@ fn test_stream_event_variants() {
 
 // ── GenerationConfig defaults via serde ──
 
+/// Verifies that partial JSON can deserialize into GenerationConfig and that omitted fields take documented defaults.
 #[test]
 fn test_generation_config_partial_deserialize() {
     let json = r#"{"max_tokens":1000,"temperature":0.7}"#;

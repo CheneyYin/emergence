@@ -122,6 +122,7 @@ mod tests {
     use super::*;
     use crate::permissions::RiskLevel;
 
+    /// Verifies that GrepTool declares "pattern" as a required parameter.
     #[test]
     fn test_grep_parameters() {
         let tool = GrepTool;
@@ -129,16 +130,19 @@ mod tests {
         assert!(params["required"].as_array().unwrap().contains(&serde_json::json!("pattern")));
     }
 
+    /// Verifies that GrepTool reports ReadOnly risk level.
     #[test]
     fn test_grep_risk_level() {
         assert_eq!(GrepTool.risk_level(&serde_json::json!({})), RiskLevel::ReadOnly);
     }
 
+    /// Verifies that GlobTool reports ReadOnly risk level.
     #[test]
     fn test_glob_risk_level() {
         assert_eq!(GlobTool.risk_level(&serde_json::json!({})), RiskLevel::ReadOnly);
     }
 
+    /// Verifies that GlobTool finds files matching the given pattern in the specified path.
     #[tokio::test]
     async fn test_glob_finds_files() {
         let tool = GlobTool;
@@ -147,6 +151,7 @@ mod tests {
         assert!(output.content.contains("main.rs"));
     }
 
+    /// Verifies that GrepTool finds text matching the given pattern in Rust source files.
     #[tokio::test]
     async fn test_grep_finds_pattern() {
         let tool = GrepTool;
@@ -155,6 +160,7 @@ mod tests {
         assert!(output.content.contains("main"));
     }
 
+    /// Verifies that GrepTool returns the correct name and a non-empty description.
     #[test]
     fn test_grep_name_and_description() {
         let tool = GrepTool;
@@ -162,6 +168,7 @@ mod tests {
         assert!(tool.description().contains("搜索"));
     }
 
+    /// Verifies that GlobTool returns the correct name and a non-empty description.
     #[test]
     fn test_glob_name_and_description() {
         let tool = GlobTool;
@@ -169,6 +176,7 @@ mod tests {
         assert!(tool.description().contains("文件模式"));
     }
 
+    /// Verifies that GlobTool declares "pattern" as a required parameter.
     #[test]
     fn test_glob_parameters() {
         let tool = GlobTool;
@@ -176,6 +184,7 @@ mod tests {
         assert!(params["required"].as_array().unwrap().contains(&serde_json::json!("pattern")));
     }
 
+    /// Verifies that GlobTool returns a "no matches" message when no files match the pattern.
     #[tokio::test]
     async fn test_glob_empty_result() {
         let tool = GlobTool;
@@ -184,6 +193,7 @@ mod tests {
         assert_eq!(output.content, "未找到匹配文件");
     }
 
+    /// Verifies that GrepTool returns a "no matches" message when the pattern is not found.
     #[tokio::test]
     async fn test_grep_empty_result() {
         let tool = GrepTool;
@@ -194,6 +204,7 @@ mod tests {
         assert_eq!(output.content, "未找到匹配结果");
     }
 
+    /// Verifies that GlobTool's output metadata includes a positive file count.
     #[tokio::test]
     async fn test_glob_metadata_file_count() {
         let tool = GlobTool;
@@ -203,6 +214,7 @@ mod tests {
         assert!(file_count > 0);
     }
 
+    /// Verifies that GrepTool's output metadata includes a positive match count.
     #[tokio::test]
     async fn test_grep_metadata_match_count() {
         let tool = GrepTool;

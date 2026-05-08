@@ -96,6 +96,7 @@ mod tests {
 
     // ── Role ──
 
+    /// Verifies that serializing all Role variants produces the correct lowercase JSON string representation.
     #[test]
     fn test_role_serialize_lowercase() {
         assert_eq!(serde_json::to_string(&Role::System).unwrap(), r#""system""#);
@@ -104,6 +105,7 @@ mod tests {
         assert_eq!(serde_json::to_string(&Role::Tool).unwrap(), r#""tool""#);
     }
 
+    /// Verifies that JSON deserialization of lowercase role strings correctly produces each Role variant.
     #[test]
     fn test_role_deserialize() {
         assert_eq!(serde_json::from_str::<Role>(r#""system""#).unwrap(), Role::System);
@@ -114,6 +116,7 @@ mod tests {
 
     // ── ChatMessage ──
 
+    /// Verifies that a minimal ChatMessage serializes without optional fields `name` and `tool_call_id`.
     #[test]
     fn test_chat_message_serialize_minimal() {
         let msg = ChatMessage {
@@ -130,6 +133,7 @@ mod tests {
         assert!(!parsed.as_object().unwrap().contains_key("tool_call_id"));
     }
 
+    /// Verifies that ChatMessage serializes `name` and `tool_call_id` when present.
     #[test]
     fn test_chat_message_serialize_with_optional_fields() {
         let msg = ChatMessage {
@@ -148,6 +152,7 @@ mod tests {
 
     // ── Content (untagged) ──
 
+    /// Verifies that Content::Text serializes as a plain JSON string rather than an object.
     #[test]
     fn test_content_text_serialize_as_plain_string() {
         let content = Content::Text("hello world".into());
@@ -155,6 +160,7 @@ mod tests {
         assert_eq!(json, r#""hello world""#);
     }
 
+    /// Verifies that Content::Parts serializes as a JSON array with typed elements.
     #[test]
     fn test_content_parts_serialize_as_array() {
         let content = Content::Parts(vec![
@@ -167,12 +173,14 @@ mod tests {
         assert_eq!(parsed[0]["text"], "hi");
     }
 
+    /// Verifies that a plain JSON string deserializes into Content::Text.
     #[test]
     fn test_content_text_deserialize() {
         let content: Content = serde_json::from_str(r#""hello""#).unwrap();
         assert_eq!(content, Content::Text("hello".into()));
     }
 
+    /// Verifies that a JSON array deserializes into Content::Parts with correct inner structure.
     #[test]
     fn test_content_parts_deserialize() {
         let json = r#"[{"type":"text","text":"hi"}]"#;
@@ -187,6 +195,7 @@ mod tests {
 
     // ── ContentPart ──
 
+    /// Verifies that ContentPart::ToolUse serializes with the correct structure and snake_case type tag.
     #[test]
     fn test_content_part_tool_use_serialize() {
         let part = ContentPart::ToolUse {
@@ -202,6 +211,7 @@ mod tests {
         assert_eq!(parsed["input"]["path"], "/x");
     }
 
+    /// Verifies that ContentPart::ToolResult serializes `is_error` when set to Some(true).
     #[test]
     fn test_content_part_tool_result_with_is_error() {
         let part = ContentPart::ToolResult {
@@ -216,6 +226,7 @@ mod tests {
         assert_eq!(parsed["is_error"], true);
     }
 
+    /// Verifies that `is_error` is omitted from serialization when None.
     #[test]
     fn test_content_part_tool_result_without_is_error() {
         let part = ContentPart::ToolResult {
@@ -229,6 +240,7 @@ mod tests {
 
     // ── StopReason ──
 
+    /// Verifies that all StopReason variants serialize to their expected snake_case representation.
     #[test]
     fn test_stop_reason_snake_case() {
         assert_eq!(serde_json::to_string(&StopReason::EndTurn).unwrap(), r#""end_turn""#);
@@ -237,6 +249,7 @@ mod tests {
         assert_eq!(serde_json::to_string(&StopReason::StopSequence).unwrap(), r#""stop_sequence""#);
     }
 
+    /// Verifies that snake_case JSON strings deserialize into the correct StopReason variant.
     #[test]
     fn test_stop_reason_deserialize() {
         assert_eq!(serde_json::from_str::<StopReason>(r#""end_turn""#).unwrap(), StopReason::EndTurn);
@@ -247,6 +260,7 @@ mod tests {
 
     // ── Usage ──
 
+    /// Verifies that Usage::default() initializes both input and output token counters to zero.
     #[test]
     fn test_usage_default_is_zero() {
         let usage = Usage::default();
@@ -254,6 +268,7 @@ mod tests {
         assert_eq!(usage.output_tokens, 0);
     }
 
+    /// Verifies that Usage serializes `input_tokens` and `output_tokens` correctly.
     #[test]
     fn test_usage_serialize() {
         let usage = Usage { input_tokens: 10, output_tokens: 5 };
@@ -276,6 +291,7 @@ mod tests {
         }
     }
 
+    /// Verifies that optional fields `thinking` and `tools` are omitted when set to None.
     #[test]
     fn test_generation_config_serialize_minimal() {
         let config = config();
@@ -287,6 +303,7 @@ mod tests {
         assert!(!parsed.as_object().unwrap().contains_key("tools"));
     }
 
+    /// Verifies that the thinking budget is serialized when `thinking` is set to Some.
     #[test]
     fn test_generation_config_with_thinking() {
         let config = GenerationConfig { thinking: Some(16000), ..config() };
@@ -295,6 +312,7 @@ mod tests {
         assert_eq!(parsed["thinking"], 16000);
     }
 
+    /// Verifies that multiple stop sequences are serialized as a JSON array.
     #[test]
     fn test_generation_config_with_stop_sequences() {
         let config = GenerationConfig {
@@ -308,6 +326,7 @@ mod tests {
         assert_eq!(stops[0], "```");
     }
 
+    /// Verifies that missing optional fields deserialize to their Rust defaults (temperature=0.0, top_p=1.0, thinking=None).
     #[test]
     fn test_generation_config_deserialize_defaults() {
         let json = r#"{"max_tokens":100}"#;
@@ -320,6 +339,7 @@ mod tests {
 
     // ── ToolDefinition ──
 
+    /// Verifies that ToolDefinition serializes name, description, and parameters correctly.
     #[test]
     fn test_tool_definition_serialize() {
         let tool = ToolDefinition {
@@ -334,6 +354,7 @@ mod tests {
         assert_eq!(parsed["parameters"]["type"], "object");
     }
 
+    /// Verifies that ToolDefinition deserializes from JSON with all fields intact.
     #[test]
     fn test_tool_definition_deserialize() {
         let json = r#"{"name":"read","description":"read a file","parameters":{"type":"object"}}"#;
@@ -345,6 +366,7 @@ mod tests {
 
     // ── Deserialization roundtrips ──
 
+    /// Verifies that a minimal ChatMessage JSON deserializes correctly with optional fields defaulting to None.
     #[test]
     fn test_chat_message_deserialize() {
         let json = r#"{"role":"assistant","content":"response"}"#;
@@ -355,6 +377,7 @@ mod tests {
         assert_eq!(msg.tool_call_id, None);
     }
 
+    /// Verifies that ChatMessage deserializes all fields including `name` and `tool_call_id`.
     #[test]
     fn test_chat_message_deserialize_with_optional_fields() {
         let json = r#"{"role":"tool","content":"result","name":"read","tool_call_id":"tc_1"}"#;
@@ -367,6 +390,7 @@ mod tests {
         });
     }
 
+    /// Verifies that a ChatMessage with Content::Parts survives a full serialize-deserialize roundtrip unchanged.
     #[test]
     fn test_chat_message_full_roundtrip() {
         let original = ChatMessage {
@@ -383,6 +407,7 @@ mod tests {
         assert_eq!(original, roundtripped);
     }
 
+    /// Verifies that a tool_use JSON object deserializes into ContentPart::ToolUse with correct fields.
     #[test]
     fn test_content_part_tool_use_deserialize() {
         let json = r#"{"type":"tool_use","id":"t1","name":"read","input":{"path":"/x"}}"#;
@@ -394,6 +419,7 @@ mod tests {
         });
     }
 
+    /// Verifies that a tool_result JSON object deserializes into ContentPart::ToolResult with `is_error` defaulting to None.
     #[test]
     fn test_content_part_tool_result_deserialize() {
         let json = r#"{"type":"tool_result","tool_use_id":"t1","content":"done"}"#;
@@ -405,6 +431,7 @@ mod tests {
         });
     }
 
+    /// Verifies that a text-type JSON content part correctly deserializes into ContentPart::Text.
     #[test]
     fn test_content_part_text_deserialize() {
         let json = r#"{"type":"text","text":"hello"}"#;
@@ -412,6 +439,7 @@ mod tests {
         assert_eq!(part, ContentPart::Text { text: "hello".into() });
     }
 
+    /// Verifies that ModelInfo serializes `id`, `name`, and `max_tokens` correctly.
     #[test]
     fn test_model_info_serialize() {
         let model = ModelInfo {
@@ -426,6 +454,7 @@ mod tests {
         assert_eq!(parsed["max_tokens"], 8192);
     }
 
+    /// Verifies that ModelInfo deserializes from JSON with all fields intact.
     #[test]
     fn test_model_info_deserialize() {
         let json = r#"{"id":"gpt-4","name":"GPT-4","max_tokens":8192}"#;
@@ -435,6 +464,7 @@ mod tests {
         assert_eq!(model.max_tokens, 8192);
     }
 
+    /// Verifies that Usage deserializes `input_tokens` and `output_tokens` from JSON.
     #[test]
     fn test_usage_deserialize() {
         let json = r#"{"input_tokens":100,"output_tokens":50}"#;
@@ -443,6 +473,7 @@ mod tests {
         assert_eq!(usage.output_tokens, 50);
     }
 
+    /// Verifies that GenerationConfig deserializes with tool definitions present in the JSON.
     #[test]
     fn test_generation_config_deserialize_with_tools() {
         let json = r#"{"max_tokens":200,"tools":[{"name":"read","description":"desc","parameters":{}}]}"#;

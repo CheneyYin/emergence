@@ -142,6 +142,7 @@ impl Default for SessionSettings {
 mod tests {
     use super::*;
 
+    /// Verifies that Settings::default() produces correct default values for all fields.
     #[test]
     fn test_settings_default() {
         let s = Settings::default();
@@ -160,6 +161,7 @@ mod tests {
         assert_eq!(s.session.compaction_threshold_tokens, 80000);
     }
 
+    /// Verifies that Settings can be deserialized from JSON with partial field overrides.
     #[test]
     fn test_deserialize_from_json() {
         let json = r#"{

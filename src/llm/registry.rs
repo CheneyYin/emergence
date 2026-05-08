@@ -64,6 +64,7 @@ mod tests {
         })
     }
 
+    /// Verifies that a registered provider can be retrieved by name and matches the originally registered provider.
     #[test]
     fn test_register_and_get() {
         let mut registry = ProviderRegistry::new();
@@ -74,12 +75,14 @@ mod tests {
         assert_eq!(provider.unwrap().models()[0].id, "test-model");
     }
 
+    /// Verifies that querying an unregistered provider name returns None rather than panicking.
     #[test]
     fn test_get_nonexistent() {
         let registry = ProviderRegistry::new();
         assert!(registry.get("missing").is_none());
     }
 
+    /// Verifies that list_providers returns provider names in alphabetical order regardless of insertion order.
     #[test]
     fn test_list_providers_sorted() {
         let mut registry = ProviderRegistry::new();
@@ -90,6 +93,7 @@ mod tests {
         assert_eq!(registry.list_providers(), vec!["a", "b", "c"]);
     }
 
+    /// Verifies that re-registering an existing provider name replaces the previously registered provider.
     #[test]
     fn test_register_overwrites() {
         let mut registry = ProviderRegistry::new();

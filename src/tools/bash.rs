@@ -129,6 +129,7 @@ mod tests {
     use super::*;
     use crate::permissions::RiskLevel;
 
+    /// Verifies that safe commands (ls, cat, git log, echo) are classified as ReadOnly.
     #[test]
     fn test_classify_readonly() {
         assert_eq!(BashTool::classify_command("ls -la"), RiskLevel::ReadOnly);
@@ -137,6 +138,7 @@ mod tests {
         assert_eq!(BashTool::classify_command("echo hello"), RiskLevel::ReadOnly);
     }
 
+    /// Verifies that dangerous commands (rm, sudo, curl with pipe) are classified as System.
     #[test]
     fn test_classify_system() {
         assert_eq!(BashTool::classify_command("rm -rf /"), RiskLevel::System);
@@ -145,6 +147,7 @@ mod tests {
         assert_eq!(BashTool::classify_command("curl example.com"), RiskLevel::System);
     }
 
+    /// Verifies that write-level commands (cargo build, make, npm install) are classified as Write.
     #[test]
     fn test_classify_write() {
         assert_eq!(BashTool::classify_command("cargo build"), RiskLevel::Write);
@@ -152,6 +155,7 @@ mod tests {
         assert_eq!(BashTool::classify_command("npm install"), RiskLevel::Write);
     }
 
+    /// Verifies that BashTool returns the correct name and a non-empty description.
     #[test]
     fn test_bash_name_and_description() {
         let tool = BashTool;
@@ -159,6 +163,7 @@ mod tests {
         assert!(tool.description().contains("shell"));
     }
 
+    /// Verifies that risk_level dispatches correctly through the Tool trait for ReadOnly, System, and Write commands.
     #[test]
     fn test_risk_level_via_trait() {
         let tool = BashTool;
@@ -167,23 +172,27 @@ mod tests {
         assert_eq!(tool.risk_level(&serde_json::json!({"command": "cargo build"})), RiskLevel::Write);
     }
 
+    /// Verifies that an empty parameter map defaults to Write risk level.
     #[test]
     fn test_risk_level_missing_command_defaults_to_write() {
         let tool = BashTool;
         assert_eq!(tool.risk_level(&serde_json::json!({})), RiskLevel::Write);
     }
 
+    /// Verifies that classify_command correctly handles leading and trailing whitespace.
     #[test]
     fn test_classify_trimmed_input() {
         assert_eq!(BashTool::classify_command("  ls -la  "), RiskLevel::ReadOnly);
     }
 
+    /// Verifies that dangerous patterns take priority over safe patterns when both match.
     #[test]
     fn test_classify_dangerous_before_safe() {
         // "echo text | sudo ls" — contains "sudo " (dangerous), danger takes priority
         assert_eq!(BashTool::classify_command("echo text | sudo ls"), RiskLevel::System);
     }
 
+    /// Verifies that BashTool executes a simple echo command and reports exit code 0.
     #[tokio::test]
     async fn test_execute_echo() {
         let tool = BashTool;
@@ -192,6 +201,7 @@ mod tests {
         assert_eq!(output.metadata.unwrap()["exit_code"], 0);
     }
 
+    /// Verifies that BashTool captures both stdout and stderr output in the response.
     #[tokio::test]
     async fn test_execute_with_stderr() {
         let tool = BashTool;
@@ -200,6 +210,7 @@ mod tests {
         assert!(output.content.contains("ok"));
     }
 
+    /// Verifies that BashTool returns the "(无输出)" placeholder when a command produces no output.
     #[tokio::test]
     async fn test_execute_empty_output() {
         let tool = BashTool;
