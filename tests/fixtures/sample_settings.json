@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "model": "deepseek/deepseek-v4-pro",
+  "generation": {
+    "max_tokens": 32000,
+    "temperature": 0.7,
+    "top_p": 1.0,
+    "stop_sequences": [],
+    "thinking": null
+  },
+  "providers": {
+    "deepseek": {
+      "api_key": "sk-test",
+      "base_url": "https://api.deepseek.com/v1",
+      "default_model": "deepseek-v4-pro"
+    }
+  },
+  "permissions": {
+    "auto_approve": ["read", "grep", "glob"],
+    "deny_patterns": ["sudo rm -rf /", "mkfs.*"]
+  },
+  "tools": {
+    "disabled": []
+  },
+  "session": {
+    "store_dir": "~/.emergence/sessions",
+    "auto_save": true,
+    "compaction_threshold_tokens": 80000
+  }
+}
