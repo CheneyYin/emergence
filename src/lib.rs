@@ -1,6 +1,7 @@
 pub mod app;
 pub mod commands;
 pub mod config;
+pub mod hooks;
 pub mod llm;
 pub mod permissions;
 pub mod session;
