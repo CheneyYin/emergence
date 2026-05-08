@@ -215,4 +215,111 @@ mod tests {
         let content = registry.load_full_content("test-skill").unwrap();
         assert_eq!(content, "This is the body.");
     }
+
+    /// Verifies that load_full_content returns error for a skill name not in the registry.
+    #[test]
+    fn test_load_full_content_missing_skill() {
+        let registry = SkillRegistry::new();
+        let result = registry.load_full_content("nonexistent");
+        assert!(result.is_err());
+    }
+
+    /// Verifies that parse_frontmatter falls back to filename as name when no YAML frontmatter is present.
+    #[test]
+    fn test_parse_no_frontmatter_uses_filename() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_path = dir.path().join("my-skill.md");
+        std::fs::write(&skill_path, "Just some markdown, no frontmatter.\n").unwrap();
+
+        let registry = SkillRegistry::new();
+        let meta = registry.parse_frontmatter(&skill_path.to_path_buf(), SkillSource::User).unwrap();
+        assert_eq!(meta.name, "my-skill");
+        assert!(meta.description.is_empty());
+        assert!(meta.allowed_tools.is_empty());
+    }
+
+    /// Verifies that scan_dir ignores non-.md files.
+    #[test]
+    fn test_scan_dir_ignores_non_md_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "not a skill").unwrap();
+        std::fs::write(dir.path().join("skill.md"), "---\nname: skill-1\ndescription: desc\n---\nbody").unwrap();
+
+        let mut registry = SkillRegistry::new();
+        registry.scan_dir(&dir.path().to_path_buf(), SkillSource::User).unwrap();
+        assert_eq!(registry.list().len(), 1);
+        assert_eq!(registry.list()[0].name, "skill-1");
+    }
+
+    /// Verifies that scan_dir returns Ok when the directory does not exist.
+    #[test]
+    fn test_scan_dir_nonexistent_dir() {
+        let mut registry = SkillRegistry::new();
+        let result = registry.scan_dir(&PathBuf::from("/nonexistent/dir"), SkillSource::User);
+        assert!(result.is_ok());
+        assert!(registry.list().is_empty());
+    }
+
+    /// Verifies that format_available_for_prompt returns empty string for empty registry.
+    #[test]
+    fn test_format_available_empty_registry() {
+        let registry = SkillRegistry::new();
+        assert_eq!(registry.format_available_for_prompt(), "");
+    }
+
+    /// Verifies that format_available_for_prompt wraps skills in available_skills tags.
+    #[test]
+    fn test_format_available_with_skills() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("rust.md"), "---\nname: rust\ndescription: Rust expert\n---\nbody").unwrap();
+
+        let mut registry = SkillRegistry::new();
+        registry.scan_dir(&dir.path().to_path_buf(), SkillSource::User).unwrap();
+        let text = registry.format_available_for_prompt();
+        assert!(text.contains("<available_skills>"));
+        assert!(text.contains("rust"));
+        assert!(text.contains("Rust expert"));
+        assert!(text.contains("</available_skills>"));
+    }
+
+    /// Verifies that fuzzy_match performs exact, prefix, and contains matching, and returns None for no match.
+    #[test]
+    fn test_fuzzy_match_variants() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("typescript.md"), "---\nname: typescript\ndescription: TS\n---\nbody").unwrap();
+
+        let mut registry = SkillRegistry::new();
+        registry.scan_dir(&dir.path().to_path_buf(), SkillSource::User).unwrap();
+
+        // exact match
+        assert!(registry.fuzzy_match("typescript").is_some());
+        // prefix match
+        assert!(registry.fuzzy_match("type").is_some());
+        // contains match
+        assert!(registry.fuzzy_match("script").is_some());
+        // no match
+        assert!(registry.fuzzy_match("rust").is_none());
+    }
+
+    /// Verifies that load() scans both user and project directories with project overriding user for same-named skills.
+    #[test]
+    fn test_load_two_levels_project_overrides() {
+        let user_dir = tempfile::tempdir().unwrap();
+        let project_dir = tempfile::tempdir().unwrap();
+
+        std::fs::write(user_dir.path().join("shared.md"), "---\nname: shared\ndescription: user version\n---\nuser body").unwrap();
+        std::fs::write(user_dir.path().join("user-only.md"), "---\nname: user-only\ndescription: only user\n---\nbody").unwrap();
+        std::fs::write(project_dir.path().join("shared.md"), "---\nname: shared\ndescription: project version\n---\nproject body").unwrap();
+
+        let registry = SkillRegistry::load(
+            Some(user_dir.path().to_path_buf()),
+            Some(project_dir.path().to_path_buf()),
+        ).unwrap();
+
+        let metas = registry.list();
+        assert_eq!(metas.len(), 2); // shared (project override) + user-only
+        let shared = metas.iter().find(|m| m.name == "shared").unwrap();
+        assert_eq!(shared.description, "project version");
+        assert_eq!(shared.source, SkillSource::Project);
+    }
 }
