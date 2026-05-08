@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::llm::{ChatMessage, Usage};
 
 pub mod context;
+pub mod store;
 
 /// 会话 ID
 pub type SessionId = String;
