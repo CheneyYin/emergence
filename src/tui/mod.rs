@@ -1,0 +1,273 @@
+use std::io;
+use ratatui::prelude::*;
+use crossterm::{
+    event::{self, Event as CEvent, KeyCode, KeyModifiers, KeyEvent, DisableMouseCapture, EnableMouseCapture},
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
+use tokio::sync::mpsc;
+
+use crate::protocol::{Action, Event as AppEvent};
+
+pub mod themes;
+pub mod widgets;
+pub mod popups;
+
+/// TUI 状态
+pub struct TuiState {
+    pub messages: Vec<RenderedMessage>,
+    pub status_text: String,
+    pub input_buffer: String,
+    pub show_permission_dialog: Option<PermissionDialogState>,
+    pub streaming: bool,
+    pub input_history: Vec<String>,
+    pub history_index: Option<usize>,
+    pub pending_input: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum RenderedMessage {
+    User { timestamp: String, content: String },
+    Assistant { timestamp: String, content: String, thinking: Option<String>, duration: Option<String>, tokens: Option<u32> },
+    ToolCall { tool: String, params: String, duration: Option<String> },
+    ToolResult { output: String },
+    Thinking { content: String },
+    Error { message: String },
+}
+
+#[derive(Debug, Clone)]
+pub struct PermissionDialogState {
+    pub tool_name: String,
+    pub risk: crate::permissions::RiskLevel,
+    pub params: serde_json::Value,
+    pub tool_id: String,
+}
+
+/// 启动 TUI 主循环
+pub async fn run(
+    action_tx: mpsc::UnboundedSender<Action>,
+    mut event_rx: mpsc::UnboundedReceiver<AppEvent>,
+) -> anyhow::Result<()> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut state = TuiState {
+        messages: Vec::new(),
+        status_text: "emergence · 启动中 · ✓ ready".into(),
+        input_buffer: String::new(),
+        show_permission_dialog: None,
+        streaming: false,
+        input_history: load_input_history(),
+        history_index: None,
+        pending_input: String::new(),
+    };
+
+    let res = app_loop(&mut terminal, &mut state, &action_tx, &mut event_rx).await;
+
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    terminal.show_cursor()?;
+
+    res
+}
+
+async fn app_loop(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    state: &mut TuiState,
+    action_tx: &mpsc::UnboundedSender<Action>,
+    event_rx: &mut mpsc::UnboundedReceiver<AppEvent>,
+) -> anyhow::Result<()> {
+    loop {
+        terminal.draw(|f| {
+            widgets::render(f, state);
+            if let Some(ref dialog) = state.show_permission_dialog {
+                popups::render_permission_dialog(f, dialog);
+            }
+        })?;
+
+        tokio::select! {
+            crossterm_event = tokio::task::spawn_blocking(|| event::read()) => {
+                let crossterm_event = crossterm_event??;
+                match crossterm_event {
+                    CEvent::Key(key) => {
+                        if state.show_permission_dialog.is_some() {
+                            handle_permission_key(key, state, action_tx)?;
+                        } else {
+                            handle_input_key(key, state, action_tx).await?;
+                        }
+                    }
+                    CEvent::Resize(_, _) => { /* 自动重绘 */ }
+                    _ => {}
+                }
+            }
+
+            app_event = event_rx.recv() => {
+                match app_event {
+                    Some(event) => handle_app_event(event, state)?,
+                    None => break,
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_permission_key(
+    key: KeyEvent,
+    state: &mut TuiState,
+    action_tx: &mpsc::UnboundedSender<Action>,
+) -> anyhow::Result<()> {
+    match key.code {
+        KeyCode::Char('a') | KeyCode::Char('A') => {
+            state.show_permission_dialog = None;
+            action_tx.send(Action::ApproveOnce)?;
+        }
+        KeyCode::Char('y') | KeyCode::Char('Y') => {
+            state.show_permission_dialog = None;
+            action_tx.send(Action::ApproveAlways)?;
+        }
+        KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Esc => {
+            state.show_permission_dialog = None;
+            action_tx.send(Action::Deny)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+async fn handle_input_key(
+    key: KeyEvent,
+    state: &mut TuiState,
+    action_tx: &mpsc::UnboundedSender<Action>,
+) -> anyhow::Result<()> {
+    match key {
+        KeyEvent { code: KeyCode::Char('s'), modifiers: KeyModifiers::CONTROL, .. } |
+        KeyEvent { code: KeyCode::Enter, modifiers: _, .. } => {
+            if !state.input_buffer.trim().is_empty() {
+                let input = std::mem::take(&mut state.input_buffer);
+                if state.input_history.last().map(|s| s != &input).unwrap_or(true) {
+                    state.input_history.push(input.clone());
+                    if state.input_history.len() > 1000 {
+                        state.input_history.remove(0);
+                    }
+                }
+                state.history_index = None;
+                state.pending_input.clear();
+                action_tx.send(Action::Submit(input))?;
+                state.status_text = "emergence · 处理中 · ⏳ streaming".into();
+            }
+        }
+        KeyEvent { code: KeyCode::Up, modifiers: _, .. } => {
+            if !state.input_history.is_empty() {
+                if state.history_index.is_none() {
+                    state.pending_input = std::mem::take(&mut state.input_buffer);
+                    state.history_index = Some(state.input_history.len() - 1);
+                } else if let Some(idx) = state.history_index {
+                    if idx > 0 {
+                        state.history_index = Some(idx - 1);
+                    }
+                }
+                if let Some(idx) = state.history_index {
+                    state.input_buffer = state.input_history[idx].clone();
+                }
+            }
+        }
+        KeyEvent { code: KeyCode::Down, modifiers: _, .. } => {
+            if let Some(idx) = state.history_index {
+                if idx + 1 < state.input_history.len() {
+                    state.history_index = Some(idx + 1);
+                    state.input_buffer = state.input_history[idx + 1].clone();
+                } else {
+                    state.history_index = None;
+                    state.input_buffer = std::mem::take(&mut state.pending_input);
+                }
+            }
+        }
+        KeyEvent { code: KeyCode::Esc, modifiers: _, .. } => {
+            state.input_buffer.clear();
+            state.history_index = None;
+            state.pending_input.clear();
+        }
+        KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, .. } => {
+            if state.streaming {
+                action_tx.send(Action::Cancel)?;
+            }
+        }
+        KeyEvent { code: KeyCode::Char(c), modifiers: _, .. } => {
+            state.input_buffer.push(c);
+            state.history_index = None;
+            state.pending_input.clear();
+        }
+        KeyEvent { code: KeyCode::Backspace, modifiers: _, .. } => {
+            state.input_buffer.pop();
+            state.history_index = None;
+            state.pending_input.clear();
+        }
+        KeyEvent { code: KeyCode::Tab, modifiers: _, .. } => {
+            state.input_buffer.push_str("    ");
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn load_input_history() -> Vec<String> {
+    Vec::new()
+}
+
+fn _save_input_history(history: &[String]) {
+    let _ = history;
+}
+
+fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()> {
+    match event {
+        AppEvent::TextDelta { content, finish_reason: _ } => {
+            state.streaming = true;
+            if let Some(RenderedMessage::Assistant { content: ref mut existing, .. }) = state.messages.last_mut() {
+                existing.push_str(&content);
+            } else {
+                state.messages.push(RenderedMessage::Assistant {
+                    timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
+                    content,
+                    thinking: None,
+                    duration: None,
+                    tokens: None,
+                });
+            }
+        }
+        AppEvent::ThinkingDelta { content } => {
+            state.messages.push(RenderedMessage::Thinking { content });
+        }
+        AppEvent::ToolRequest { id, name, params, risk } => {
+            state.show_permission_dialog = Some(PermissionDialogState {
+                tool_name: name,
+                risk,
+                params,
+                tool_id: id,
+            });
+        }
+        AppEvent::ToolResult { id: _, name, params, output, metadata: _ } => {
+            state.messages.push(RenderedMessage::ToolCall {
+                tool: name,
+                params: serde_json::to_string_pretty(&params).unwrap_or_default(),
+                duration: None,
+            });
+            state.messages.push(RenderedMessage::ToolResult { output });
+        }
+        AppEvent::StatusUpdate { tokens, model } => {
+            state.status_text = format!("emergence · {} · {} tokens · ⏳ streaming", model, tokens);
+        }
+        AppEvent::AgentDone { stop_reason } => {
+            state.streaming = false;
+            state.status_text = format!("emergence · ✓ ready ({:?})", stop_reason);
+        }
+        AppEvent::Error { message } => {
+            state.messages.push(RenderedMessage::Error { message });
+        }
+    }
+    Ok(())
+}
