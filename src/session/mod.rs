@@ -4,6 +4,7 @@ use crate::llm::{ChatMessage, Usage};
 
 pub mod context;
 pub mod store;
+pub mod summarizer;
 
 /// 会话 ID
 pub type SessionId = String;
