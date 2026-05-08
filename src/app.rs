@@ -1,6 +1,8 @@
+use std::path::PathBuf;
 use tokio::sync::{mpsc, oneshot};
 use crate::config::ConfigManager;
-use crate::session::SessionManager;
+use crate::session::{SessionManager, SessionKey};
+use crate::session::store::{JsonFileStore, SessionStore};
 use crate::tools::ToolRegistry;
 use crate::commands::{CommandRegistry, CommandContext, CommandOutput};
 use crate::permissions::{PermissionStore, RiskLevel};
@@ -8,7 +10,7 @@ use crate::hooks::{HookRegistry, HookEvent, HookOutcome};
 use crate::protocol::{Action, Event};
 use crate::llm::{
     StreamEvent, ChatMessage, Role, Content,
-    GenerationConfig, ToolDefinition, StopReason,
+    GenerationConfig, ToolDefinition, StopReason, ModelInfo,
 };
 use futures::StreamExt;
 
@@ -37,8 +39,128 @@ impl App {
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
-        tracing::info!("App::run() — 将在任务 24 中实现完整集成");
+        let home_dir = dirs_functions::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."));
+        let project_dir = std::env::current_dir()?;
+
+        // 1. 加载配置
+        let config = ConfigManager::load(
+            home_dir.clone(),
+            project_dir.clone(),
+            self.cli_model.clone(),
+        )?;
+
+        // 2. 加载 Skill 注册表
+        let skill_registry = crate::skills::SkillRegistry::load_default()
+            .unwrap_or_else(|_| crate::skills::SkillRegistry::new());
+
+        // 3. 创建 SessionStore（持久化）
+        let store_dir = config.session_store_dir();
+        let session_store: Box<dyn SessionStore> =
+            Box::new(JsonFileStore::new(store_dir));
+
+        // 3.5 创建/加载会话
+        let session_id = self.cli_session.clone()
+            .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d-%H%M%S").to_string());
+
+        let session_manager = if let Some(ref cli_sess) = self.cli_session {
+            let key = if cli_sess.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                SessionKey::Id(cli_sess.clone())
+            } else {
+                SessionKey::Alias(cli_sess.clone())
+            };
+            match session_store.load(&key).await {
+                Ok(Some(session)) => SessionManager::load(session),
+                _ => SessionManager::new(session_id),
+            }
+        } else {
+            SessionManager::new(session_id)
+        };
+
+        // 4. 初始化工具注册表
+        let mut tool_registry = ToolRegistry::new();
+        tool_registry.register(crate::tools::file::ReadTool);
+        tool_registry.register(crate::tools::file::WriteTool);
+        tool_registry.register(crate::tools::file::EditTool);
+        tool_registry.register(crate::tools::search::GrepTool);
+        tool_registry.register(crate::tools::search::GlobTool);
+        tool_registry.register(crate::tools::bash::BashTool);
+        tool_registry.register(crate::tools::web::WebFetchTool);
+        tool_registry.register(crate::tools::web::WebSearchTool);
+
+        // 5. 初始化命令注册表
+        let mut command_registry = CommandRegistry::new();
+        command_registry.register_all();
+
+        // 6. 初始化 Provider 注册表
+        let mut provider_registry = crate::llm::ProviderRegistry::new();
+        for (name, provider_cfg) in &config.settings.providers {
+            let models = vec![ModelInfo {
+                id: provider_cfg.default_model.clone().unwrap_or_else(|| "default".into()),
+                name: name.clone(),
+                max_tokens: 128000,
+            }];
+            let adapter = crate::llm::openai::OpenAIAdapter::new(
+                provider_cfg.base_url.clone(),
+                provider_cfg.api_key.clone(),
+                models,
+            );
+            provider_registry.register(name.clone(), Box::new(adapter));
+        }
+
+        // 6.5 加载 Hook 注册表
+        let user_hooks_path = home_dir.join(".emergence").join("hooks.json");
+        let project_hooks_path = project_dir.join(".emergence").join("hooks.json");
+        let mut hook_registry = HookRegistry::load(&user_hooks_path)
+            .unwrap_or_else(|_| HookRegistry::new());
+        if let Ok(project_hr) = HookRegistry::load(&project_hooks_path) {
+            hook_registry.merge(project_hr);
+        }
+
+        // 7. 创建通道
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+        // 8. 启动 AgentLoop
+        let mut agent_loop = AgentLoop::new(
+            config,
+            session_manager,
+            tool_registry,
+            command_registry,
+            skill_registry,
+            hook_registry,
+            provider_registry,
+            Some(session_store),
+            action_rx,
+            event_tx,
+        );
+
+        // 9. 在后台运行 AgentLoop
+        let agent_handle = tokio::spawn(async move {
+            if let Err(e) = agent_loop.run().await {
+                tracing::error!("AgentLoop 错误: {}", e);
+            }
+        });
+
+        // 10. 启动 TUI
+        crate::tui::run(action_tx.clone(), event_rx).await?;
+
+        // 11. 清理
+        let _ = action_tx.send(Action::Quit);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(3), agent_handle).await;
+
         Ok(())
+    }
+}
+
+mod dirs_functions {
+    use std::path::PathBuf;
+
+    pub fn home_dir() -> Option<PathBuf> {
+        std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .map(PathBuf::from)
+            .ok()
     }
 }
 
@@ -650,12 +772,8 @@ mod tests {
         assert!(App::new(Some("sess-1".into()), Some("deepseek/v4".into())).is_ok());
     }
 
-    /// Verifies that App::run() returns Ok for the placeholder implementation.
-    #[tokio::test]
-    async fn test_app_run_returns_ok() {
-        let app = App::new(None, None).unwrap();
-        assert!(app.run().await.is_ok());
-    }
+    // Note: App::run() starts the full TUI + AgentLoop and requires a real terminal.
+    // It cannot be tested in the standard test harness. Manual / integration testing required.
 
     /// Verifies that AgentLoop::new() sets model from config and initializes fields correctly.
     #[test]
