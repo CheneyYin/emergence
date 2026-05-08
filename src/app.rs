@@ -841,4 +841,11 @@ mod tests {
         assert!(agent.permission_store.is_allowed("grep", RiskLevel::System));
         assert!(!agent.permission_store.is_allowed("bash", RiskLevel::Write));
     }
+
+    /// Verifies that dirs_functions::home_dir() returns Some path based on HOME env.
+    #[test]
+    fn test_home_dir() {
+        let home = dirs_functions::home_dir();
+        assert!(home.is_some());
+    }
 }
