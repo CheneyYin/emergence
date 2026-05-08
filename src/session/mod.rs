@@ -289,4 +289,74 @@ mod tests {
         sm.clear();
         assert_eq!(sm.turns().len(), 0);
     }
+
+    #[test]
+    fn test_push_without_turn_returns_error() {
+        let mut sm = SessionManager::new("test-6".into());
+        let result = sm.push(make_user_msg("orphan"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_complete_without_turn_returns_error() {
+        let mut sm = SessionManager::new("test-7".into());
+        let result = sm.complete_turn();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_from_existing_session() {
+        let mut sm = SessionManager::new("test-8".into());
+        sm.begin_turn(make_user_msg("msg1"));
+        sm.complete_turn().unwrap();
+        sm.begin_turn(make_user_msg("msg2"));
+
+        // 通过 load 重建，turn_counter 应匹配
+        let session = sm.session().clone();
+        let sm2 = SessionManager::load(session);
+        assert_eq!(sm2.turns().len(), 2);
+        assert_eq!(sm2.current_turn().unwrap().messages.len(), 1);
+    }
+
+    #[test]
+    fn test_skill_management() {
+        let mut sm = SessionManager::new("test-9".into());
+
+        sm.activate_skill("typescript").unwrap();
+        sm.activate_skill("rust").unwrap();
+        assert_eq!(sm.active_skills(), &["typescript", "rust"]);
+
+        // 重复激活不重复添加
+        sm.activate_skill("rust").unwrap();
+        assert_eq!(sm.active_skills().len(), 2);
+
+        sm.deactivate_skill("typescript").unwrap();
+        assert_eq!(sm.active_skills(), &["rust"]);
+    }
+
+    #[test]
+    fn test_set_alias_and_message_count() {
+        let mut sm = SessionManager::new("test-10".into());
+        sm.set_alias("my-session".into());
+        assert_eq!(sm.session().alias.as_deref(), Some("my-session"));
+
+        sm.begin_turn(make_user_msg("a"));
+        sm.push(make_user_msg("b")).unwrap();
+        sm.begin_turn(make_user_msg("c"));
+        // Session::message_count 统计所有 turn 的所有消息
+        assert_eq!(sm.session().message_count(), 3);
+    }
+
+    #[test]
+    fn test_should_compact() {
+        let mut sm = SessionManager::new("test-11".into());
+        // 空会话 — 不应压缩
+        assert!(!sm.should_compact(100_000));
+
+        // 添加一长消息使 token 超过 80% 阈值
+        let long_msg = "x".repeat(10_000);
+        sm.begin_turn(make_user_msg(&long_msg));
+        // ~10_000 chars * 0.25 = 2_500 tokens, 阈值 3_000 * 0.8 = 2_400 → 应压缩
+        assert!(sm.should_compact(3_000));
+    }
 }
