@@ -48,3 +48,73 @@ impl Command for HelpCommand {
         Ok(CommandOutput::Success { message: msg })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_ctx() -> (crate::session::SessionManager, crate::config::ConfigManager, String, bool) {
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let config = crate::config::ConfigManager::load(
+            home.path().to_path_buf(), project.path().to_path_buf(), None,
+        ).unwrap();
+        let session = crate::session::SessionManager::new("test".into());
+        (session, config, "default".into(), false)
+    }
+
+    fn sample_metas() -> Vec<CommandMeta> {
+        vec![
+            CommandMeta { name: "quit".into(), aliases: vec!["q".into()], description: "退出".into(), usage: "/quit".into() },
+            CommandMeta { name: "clear".into(), aliases: vec![], description: "清空".into(), usage: "/clear".into() },
+        ]
+    }
+
+    /// Verifies that HelpCommand with no args lists all commands.
+    #[tokio::test]
+    async fn test_help_lists_all() {
+        let (mut session, mut config, mut model, mut should_quit) = make_ctx();
+        let cmd = HelpCommand::new(sample_metas());
+        let result = cmd.execute(&[], &mut CommandContext {
+            config: &mut config, session: &mut session,
+            model: &mut model, should_quit: &mut should_quit,
+            skill_registry: None, session_store: None,
+        }).await.unwrap();
+        match result {
+            CommandOutput::Success { message } => {
+                assert!(message.contains("quit"));
+                assert!(message.contains("clear"));
+            }
+            other => panic!("expected Success, got {:?}", other),
+        }
+    }
+
+    /// Verifies that HelpCommand with a known name shows details.
+    #[tokio::test]
+    async fn test_help_single_command() {
+        let (mut session, mut config, mut model, mut should_quit) = make_ctx();
+        let cmd = HelpCommand::new(sample_metas());
+        let result = cmd.execute(&["quit".into()], &mut CommandContext {
+            config: &mut config, session: &mut session,
+            model: &mut model, should_quit: &mut should_quit,
+            skill_registry: None, session_store: None,
+        }).await.unwrap();
+        match result {
+            CommandOutput::Success { message } => assert!(message.contains("/quit")),
+            other => panic!("expected Success, got {:?}", other),
+        }
+    }
+
+    /// Verifies that HelpCommand with unknown name returns Error.
+    #[tokio::test]
+    async fn test_help_unknown_command() {
+        let (mut session, mut config, mut model, mut should_quit) = make_ctx();
+        let cmd = HelpCommand::new(sample_metas());
+        let result = cmd.execute(&["nonexistent".into()], &mut CommandContext {
+            config: &mut config, session: &mut session,
+            model: &mut model, should_quit: &mut should_quit,
+            skill_registry: None, session_store: None,
+        }).await.unwrap();
+        assert!(matches!(result, CommandOutput::Error { .. }));
+    }
+}
