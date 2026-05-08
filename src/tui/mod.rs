@@ -316,6 +316,27 @@ pub(crate) mod tests {
         handle_permission_key(key, &mut state, &tx).unwrap();
         assert!(state.show_permission_dialog.is_none());
     }
+
+    /// Verifies that handle_app_event processes ToolResult by pushing ToolCall and ToolResult messages.
+    #[test]
+    fn test_handle_tool_result() {
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let event = AppEvent::ToolResult { id: "t1".into(), name: "read".into(), params: serde_json::json!({"file": "x"}), output: "content".into(), metadata: None };
+        handle_app_event(event, &mut state).unwrap();
+        assert_eq!(state.messages.len(), 2);
+        assert!(matches!(state.messages[0], RenderedMessage::ToolCall { .. }));
+        assert!(matches!(state.messages[1], RenderedMessage::ToolResult { .. }));
+    }
+
+    /// Verifies that handle_app_event processes StatusUpdate by setting the status text.
+    #[test]
+    fn test_handle_status_update() {
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let event = AppEvent::StatusUpdate { tokens: 42, model: "gpt-4".into() };
+        handle_app_event(event, &mut state).unwrap();
+        assert!(state.status_text.contains("gpt-4"));
+        assert!(state.status_text.contains("42"));
+    }
 }
 
 fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()> {
