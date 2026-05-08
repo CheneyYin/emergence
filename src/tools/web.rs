@@ -192,4 +192,47 @@ mod tests {
         // 多余空行应合并为单个空行
         assert!(!text.contains("\n\n\n"));
     }
+
+    #[test]
+    fn test_web_fetch_description() {
+        let tool = WebFetchTool;
+        assert!(tool.description().contains("HTTP"));
+    }
+
+    #[test]
+    fn test_web_search_description() {
+        let tool = WebSearchTool;
+        assert!(tool.description().contains("搜索"));
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_missing_url() {
+        let tool = WebFetchTool;
+        let result = tool.execute(serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("url"));
+    }
+
+    #[tokio::test]
+    async fn test_web_search_missing_query() {
+        let tool = WebSearchTool;
+        let result = tool.execute(serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("query"));
+    }
+
+    #[test]
+    fn test_extract_search_results_empty() {
+        let results = extract_search_results("<html><body>no results</body></html>");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_extract_search_results_parses_links() {
+        let html = r#"<a class="result__a" href="https://example.com">Example Title</a>"#;
+        let results = extract_search_results(html);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].contains("Example Title"));
+        assert!(results[0].contains("https://example.com"));
+    }
 }
