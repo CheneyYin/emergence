@@ -100,3 +100,6 @@ mod tests {
         assert_eq!(output.content, "ok");
     }
 }
+
+pub mod file;
+
