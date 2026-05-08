@@ -13,6 +13,7 @@ pub use message::{
 pub use registry::ProviderRegistry;
 
 pub mod openai;
+pub use openai::OpenAIAdapter;
 
 /// LLM 流式事件
 #[derive(Debug, Clone)]
