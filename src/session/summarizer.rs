@@ -80,4 +80,28 @@ mod tests {
         let summary = Summarizer::summarize_turns(&turns, 3);
         assert!(summary.is_empty());
     }
+
+    /// Verifies that user messages are truncated at 100 chars and assistant at 200 chars.
+    #[test]
+    fn test_summarize_truncates_long_messages() {
+        let long_user = "x".repeat(150);
+        let long_asst = "y".repeat(250);
+        let turns = vec![Turn {
+            id: "turn-1".into(),
+            messages: vec![
+                ChatMessage { role: Role::User, content: Content::Text(long_user), name: None, tool_call_id: None },
+                ChatMessage { role: Role::Assistant, content: Content::Text(long_asst), name: None, tool_call_id: None },
+            ],
+            status: crate::session::TurnStatus::Completed,
+            started_at: Utc::now(),
+            completed_at: Some(Utc::now()),
+            usage: Default::default(),
+        }];
+
+        let summary = Summarizer::summarize_turns(&turns, 0);
+        // 用户消息不应超过 ~100 字符
+        assert!(!summary.contains(&"x".repeat(101)));
+        // 助手消息不应超过 ~200 字符
+        assert!(!summary.contains(&"y".repeat(201)));
+    }
 }
