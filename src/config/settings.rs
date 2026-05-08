@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
-    #[serde(default)]
+    #[serde(default = "default_version")]
     pub version: u32,
     #[serde(default = "default_model")]
     pub model: String,
@@ -67,6 +67,7 @@ pub struct SessionSettings {
 }
 
 // 默认值函数
+fn default_version() -> u32 { 1 }
 fn default_model() -> String {
     "deepseek/deepseek-v4-pro".to_string()
 }

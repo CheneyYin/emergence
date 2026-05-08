@@ -107,11 +107,22 @@ mod dirs_functions {
 
 /// 合并配置：overlay 覆盖 base
 fn merge_settings(base: &mut Settings, overlay: &Settings) {
-    base.model.clone_from(&overlay.model);
-    base.version = overlay.version;
-    base.generation.max_tokens = overlay.generation.max_tokens;
-    base.generation.temperature = overlay.generation.temperature;
-    base.generation.top_p = overlay.generation.top_p;
+    // 仅在 overlay 显式设置时覆盖标量字段（判断依据：值不等于默认值）
+    if overlay.model != "deepseek/deepseek-v4-pro" {
+        base.model.clone_from(&overlay.model);
+    }
+    if overlay.version != 1 {
+        base.version = overlay.version;
+    }
+    if overlay.generation.max_tokens != 32000 {
+        base.generation.max_tokens = overlay.generation.max_tokens;
+    }
+    if overlay.generation.temperature != 0.7 {
+        base.generation.temperature = overlay.generation.temperature;
+    }
+    if overlay.generation.top_p != 1.0 {
+        base.generation.top_p = overlay.generation.top_p;
+    }
     if !overlay.generation.stop_sequences.is_empty() {
         base.generation
             .stop_sequences
