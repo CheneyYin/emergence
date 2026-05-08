@@ -7,8 +7,8 @@ use crate::permissions::{PermissionStore, RiskLevel};
 use crate::hooks::{HookRegistry, HookEvent, HookOutcome};
 use crate::protocol::{Action, Event};
 use crate::llm::{
-    Provider, StreamEvent, ChatMessage, Role, Content,
-    GenerationConfig, ToolDefinition, StopReason, Usage,
+    StreamEvent, ChatMessage, Role, Content,
+    GenerationConfig, ToolDefinition, StopReason,
 };
 use futures::StreamExt;
 
@@ -621,6 +621,15 @@ impl AgentLoop {
 mod tests {
     use super::*;
     use crate::permissions::RiskLevel;
+    use tempfile::TempDir;
+
+    fn make_config() -> crate::config::ConfigManager {
+        let home = TempDir::new().unwrap();
+        let project = TempDir::new().unwrap();
+        crate::config::ConfigManager::load(
+            home.path().to_path_buf(), project.path().to_path_buf(), None,
+        ).unwrap()
+    }
 
     /// Verifies that AgentState variants can be constructed and compared.
     #[test]
@@ -632,5 +641,86 @@ mod tests {
             params: serde_json::json!({}), risk: RiskLevel::Write,
         };
         assert!(matches!(waiting, AgentState::WaitingPermission { .. }));
+    }
+
+    /// Verifies that App::new() succeeds with and without arguments.
+    #[test]
+    fn test_app_new() {
+        assert!(App::new(None, None).is_ok());
+        assert!(App::new(Some("sess-1".into()), Some("deepseek/v4".into())).is_ok());
+    }
+
+    /// Verifies that App::run() returns Ok for the placeholder implementation.
+    #[tokio::test]
+    async fn test_app_run_returns_ok() {
+        let app = App::new(None, None).unwrap();
+        assert!(app.run().await.is_ok());
+    }
+
+    /// Verifies that AgentLoop::new() sets model from config and initializes fields correctly.
+    #[test]
+    fn test_agent_loop_new() {
+        let config = make_config();
+        let session = crate::session::SessionManager::new("test".into());
+        let (action_tx, action_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let agent = AgentLoop::new(
+            config,
+            session,
+            ToolRegistry::new(),
+            CommandRegistry::new(),
+            crate::skills::SkillRegistry::new(),
+            HookRegistry::new(),
+            crate::llm::ProviderRegistry::new(),
+            None,
+            action_rx,
+            event_tx,
+        );
+
+        assert_eq!(agent.model, "deepseek/deepseek-v4-pro");
+        assert_eq!(agent.state, AgentState::Idle);
+        assert_eq!(agent.retry_count, 0);
+        assert_eq!(agent.max_retries, 3);
+        assert!(!agent.should_exit);
+        // action_tx is kept to keep channel open
+        drop(action_tx);
+    }
+
+    /// Verifies that auto_approve tools from config are pre-approved in permission_store.
+    #[test]
+    fn test_agent_loop_auto_approve_permissions() {
+        let home = TempDir::new().unwrap();
+        let project = TempDir::new().unwrap();
+        let emergence_dir = home.path().join(".emergence");
+        std::fs::create_dir_all(&emergence_dir).unwrap();
+        std::fs::write(
+            emergence_dir.join("settings.json"),
+            r#"{"permissions": {"auto_approve": ["read", "grep"]}}"#,
+        ).unwrap();
+
+        let config = crate::config::ConfigManager::load(
+            home.path().to_path_buf(), project.path().to_path_buf(), None,
+        ).unwrap();
+        let session = crate::session::SessionManager::new("test".into());
+        let (_action_tx, action_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let agent = AgentLoop::new(
+            config,
+            session,
+            ToolRegistry::new(),
+            CommandRegistry::new(),
+            crate::skills::SkillRegistry::new(),
+            HookRegistry::new(),
+            crate::llm::ProviderRegistry::new(),
+            None,
+            action_rx,
+            event_tx,
+        );
+
+        assert!(agent.permission_store.is_allowed("read", RiskLevel::Write));
+        assert!(agent.permission_store.is_allowed("grep", RiskLevel::System));
+        assert!(!agent.permission_store.is_allowed("bash", RiskLevel::Write));
     }
 }
