@@ -1,5 +1,16 @@
 use std::collections::HashMap;
 
+pub mod clear;
+pub mod compact_cmd;
+pub mod config_cmd;
+pub mod help;
+pub mod model_cmd;
+pub mod quit;
+pub mod sessions_cmd;
+pub mod skills_cmd;
+pub mod tokens_cmd;
+pub mod tools_cmd;
+
 /// 命令执行上下文 — 命令可访问的子系统引用
 pub struct CommandContext<'a> {
     pub config: &'a mut crate::config::ConfigManager,
@@ -134,6 +145,25 @@ impl CommandRegistry {
         suggestions.sort_by_key(|s| s.distance);
         suggestions.truncate(3);
         suggestions
+    }
+
+    /// 注册所有内置命令
+    /// HelpCommand 最后注册，以便获取所有命令的 meta
+    pub fn register_all(&mut self) {
+        self.register(clear::ClearCommand);
+        self.register(compact_cmd::CompactCommand);
+        self.register(config_cmd::ConfigCommand);
+        self.register(sessions_cmd::SessionsCommand);
+        self.register(quit::QuitCommand);
+        self.register(model_cmd::ModelCommand);
+        self.register(tokens_cmd::TokensCommand);
+        self.register(tools_cmd::ToolsCommand);
+        self.register(skills_cmd::SkillsCommand);
+        self.register(skills_cmd::SkillCommand);
+
+        // HelpCommand 最后注册，获取所有已注册命令的 metas
+        let metas = self.list();
+        self.register(help::HelpCommand::new(metas));
     }
 
     pub fn list(&self) -> Vec<CommandMeta> {
