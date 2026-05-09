@@ -239,6 +239,8 @@ impl AgentLoop {
             content: "emergence v0.1.0 已就绪。输入消息开始对话...\n".into(),
             finish_reason: None,
         });
+        // 欢迎消息后立即发送 AgentDone，否则 TUI 的 streaming 永久为 true，Enter 被拦截
+        let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
 
         while let Some(action) = self.action_rx.recv().await {
             match &self.state {
