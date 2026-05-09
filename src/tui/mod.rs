@@ -100,7 +100,7 @@ async fn app_loop(
                 }
             }
 
-            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+            _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {
                 // 非阻塞检查是否有输入事件
                 if event::poll(std::time::Duration::ZERO)? {
                     let crossterm_event = event::read()?;
