@@ -79,9 +79,12 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
     }
 
     let line_count = lines.len();
+    // 自动跟随：streaming 时始终滚到底部，否则使用用户手动偏移
+    let max_scroll = line_count.saturating_sub(area.height as usize) as u16;
+    let scroll_v = if state.streaming { max_scroll } else { state.scroll_offset.min(max_scroll) };
     let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::NONE))
-        .scroll((line_count.saturating_sub(area.height as usize) as u16, 0));
+        .scroll((scroll_v, 0));
 
     f.render_widget(paragraph, area);
 }

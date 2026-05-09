@@ -23,6 +23,8 @@ pub struct TuiState {
     pub input_history: Vec<String>,
     pub history_index: Option<usize>,
     pub pending_input: String,
+    /// 用户手动滚动偏移（行），用于上下翻阅历史对话
+    pub scroll_offset: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +65,7 @@ pub async fn run(
         input_history: load_input_history(),
         history_index: None,
         pending_input: String::new(),
+        scroll_offset: 0,
     };
 
     let res = app_loop(&mut terminal, &mut state, &action_tx, &mut event_rx).await;
@@ -210,6 +213,19 @@ async fn handle_input_key(
         KeyEvent { code: KeyCode::Tab, modifiers: _, .. } => {
             state.input_buffer.push_str("    ");
         }
+        // 滚动快捷键
+        KeyEvent { code: KeyCode::PageUp, modifiers: _, .. } => {
+            state.scroll_offset = state.scroll_offset.saturating_add(10);
+        }
+        KeyEvent { code: KeyCode::PageDown, modifiers: _, .. } => {
+            state.scroll_offset = state.scroll_offset.saturating_sub(10);
+        }
+        KeyEvent { code: KeyCode::Home, modifiers: _, .. } => {
+            state.scroll_offset = u16::MAX; // 由 render 中 min(max_scroll) 约束
+        }
+        KeyEvent { code: KeyCode::End, modifiers: _, .. } => {
+            state.scroll_offset = 0;
+        }
         _ => {}
     }
     Ok(())
@@ -241,6 +257,7 @@ pub(crate) mod tests {
             input_history: vec![],
             history_index: None,
             pending_input: String::new(),
+            scroll_offset: 0,
         };
         assert!(state.messages.is_empty());
         assert_eq!(state.status_text, "ready");
@@ -259,7 +276,7 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes TextDelta by updating the last assistant message or creating one.
     #[test]
     fn test_handle_text_delta() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 0 };
         let event = AppEvent::TextDelta { content: "Hello".into(), finish_reason: None };
         handle_app_event(event, &mut state).unwrap();
         assert!(state.streaming);
@@ -269,7 +286,7 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes ThinkingDelta by appending a Thinking message.
     #[test]
     fn test_handle_thinking_delta() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 0 };
         let event = AppEvent::ThinkingDelta { content: "thinking...".into() };
         handle_app_event(event, &mut state).unwrap();
         assert!(matches!(state.messages.last(), Some(RenderedMessage::Thinking { .. })));
@@ -278,7 +295,7 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes ToolRequest by setting the permission dialog.
     #[test]
     fn test_handle_tool_request() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 0 };
         let event = AppEvent::ToolRequest { id: "t1".into(), name: "bash".into(), params: serde_json::json!({"cmd": "ls"}), risk: RiskLevel::Write };
         handle_app_event(event, &mut state).unwrap();
         assert!(state.show_permission_dialog.is_some());
@@ -290,7 +307,7 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes AgentDone by stopping streaming and updating status.
     #[test]
     fn test_handle_agent_done() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: true, input_history: vec![], history_index: None, pending_input: String::new() };
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: true, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 0 };
         let event = AppEvent::AgentDone { stop_reason: StopReason::EndTurn };
         handle_app_event(event, &mut state).unwrap();
         assert!(!state.streaming);
@@ -300,7 +317,7 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes Error by appending an Error message.
     #[test]
     fn test_handle_error() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 0 };
         let event = AppEvent::Error { message: "failed".into() };
         handle_app_event(event, &mut state).unwrap();
         assert!(matches!(state.messages.last(), Some(RenderedMessage::Error { .. })));
@@ -310,7 +327,7 @@ pub(crate) mod tests {
     #[test]
     fn test_permission_key_approve_once() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: Some(PermissionDialogState { tool_name: "bash".into(), risk: RiskLevel::Write, params: serde_json::json!({}), tool_id: "t1".into() }), streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: Some(PermissionDialogState { tool_name: "bash".into(), risk: RiskLevel::Write, params: serde_json::json!({}), tool_id: "t1".into() }), streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 0 };
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<crate::protocol::Action>();
         let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
         handle_permission_key(key, &mut state, &tx).unwrap();
@@ -320,7 +337,7 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes ToolResult by pushing ToolCall and ToolResult messages.
     #[test]
     fn test_handle_tool_result() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 0 };
         let event = AppEvent::ToolResult { id: "t1".into(), name: "read".into(), params: serde_json::json!({"file": "x"}), output: "content".into(), metadata: None };
         handle_app_event(event, &mut state).unwrap();
         assert_eq!(state.messages.len(), 2);
@@ -331,7 +348,7 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes StatusUpdate by setting the status text.
     #[test]
     fn test_handle_status_update() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new() };
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 0 };
         let event = AppEvent::StatusUpdate { tokens: 42, model: "gpt-4".into() };
         handle_app_event(event, &mut state).unwrap();
         assert!(state.status_text.contains("gpt-4"));
