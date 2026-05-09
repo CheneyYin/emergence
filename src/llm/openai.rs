@@ -28,9 +28,46 @@ impl OpenAIAdapter {
         tools: &[ToolDefinition],
         config: &GenerationConfig,
     ) -> String {
+        // 将消息转换为 OpenAI JSON 格式：ContentPart::ToolUse → tool_calls
+        let openai_messages: Vec<serde_json::Value> = messages.iter().map(|m| {
+            let mut msg_json = serde_json::json!({
+                "role": m.role,
+                "content": m.content,
+            });
+            if let (Some(n), Some(tc_id)) = (&m.name, &m.tool_call_id) {
+                msg_json["name"] = serde_json::json!(n);
+                msg_json["tool_call_id"] = serde_json::json!(tc_id);
+            }
+            // Convert ContentPart::ToolUse to tool_calls
+            if let Content::Parts(parts) = &m.content {
+                let tool_uses: Vec<&crate::llm::ContentPart> = parts.iter()
+                    .filter(|p| matches!(p, crate::llm::ContentPart::ToolUse { .. }))
+                    .collect();
+                if !tool_uses.is_empty() {
+                    msg_json["content"] = serde_json::Value::Null;
+                    let tool_calls: Vec<serde_json::Value> = tool_uses.iter().map(|tu| {
+                        if let crate::llm::ContentPart::ToolUse { id, name, input } = tu {
+                            serde_json::json!({
+                                "id": id,
+                                "type": "function",
+                                "function": {
+                                    "name": name,
+                                    "arguments": serde_json::to_string(input).unwrap_or_default(),
+                                }
+                            })
+                        } else {
+                            serde_json::json!({})
+                        }
+                    }).collect();
+                    msg_json["tool_calls"] = serde_json::json!(tool_calls);
+                }
+            }
+            msg_json
+        }).collect();
+
         let mut body = serde_json::json!({
             "model": model,
-            "messages": messages,
+            "messages": openai_messages,
             "max_tokens": config.max_tokens,
             "temperature": config.temperature,
             "top_p": config.top_p,

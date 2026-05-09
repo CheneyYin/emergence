@@ -554,6 +554,20 @@ impl AgentLoop {
                 match stop_reason {
                     StopReason::ToolUse => {
                         if let Some((id, name, args)) = self.tool_call_buffer.take() {
+                            // Push assistant tool_use message so API sees tool_calls before tool result
+                            let tool_use_msg = ChatMessage {
+                                role: Role::Assistant,
+                                content: Content::Parts(vec![
+                                    crate::llm::ContentPart::ToolUse {
+                                        id: id.clone(),
+                                        name: name.clone(),
+                                        input: serde_json::from_str(&args).unwrap_or_default(),
+                                    },
+                                ]),
+                                name: None,
+                                tool_call_id: None,
+                            };
+                            let _ = self.session.push(tool_use_msg);
                             self.handle_tool_use(id, name, args, tools).await?;
                         }
                     }
