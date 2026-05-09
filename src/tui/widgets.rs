@@ -104,22 +104,19 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
         }
     }
 
-    // 估算 wrap 后的视觉行数：总字符数 / 面板宽度 + 原始行数
+    // streaming 时自动滚到底部，其余依赖终端滚动
     let total_chars: usize = lines.iter().map(|l| l.width()).sum();
     let col_width = (area.width as usize).max(1);
-    let wrapped_estimate = total_chars / col_width + lines.len();
-    let max_scroll = wrapped_estimate.saturating_sub(area.height as usize) as u16;
-    // scroll_offset = 0 → 在底部（跟随最新消息）
-    // scroll_offset > 0 → 用户向上滚动 offset 行
-    let scroll_v = if state.streaming || state.scroll_offset == 0 {
-        max_scroll
-    } else {
-        max_scroll.saturating_sub(state.scroll_offset)
-    };
     let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::NONE))
-        .wrap(Wrap { trim: true })
-        .scroll((scroll_v, 0));
+        .wrap(Wrap { trim: true });
+    let paragraph = if state.streaming {
+        let wrapped_estimate = total_chars / col_width + total_chars / 40;
+        let max_scroll = wrapped_estimate.saturating_sub(area.height as usize) as u16;
+        paragraph.scroll((max_scroll, 0))
+    } else {
+        paragraph
+    };
 
     f.render_widget(paragraph, area);
 }
