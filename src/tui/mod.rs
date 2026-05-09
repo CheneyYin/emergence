@@ -165,7 +165,11 @@ async fn handle_input_key(
             }
         }
         KeyEvent { code: KeyCode::Up, modifiers: _, .. } => {
-            if !state.input_history.is_empty() {
+            // 用户已手动向上滚动 → 继续滚动对话区域
+            if state.scroll_offset > 0 {
+                state.scroll_offset = state.scroll_offset.saturating_add(3);
+            } else if !state.input_history.is_empty() {
+                // 在底部 → 浏览输入历史
                 if state.history_index.is_none() {
                     state.pending_input = std::mem::take(&mut state.input_buffer);
                     state.history_index = Some(state.input_history.len() - 1);
@@ -180,7 +184,15 @@ async fn handle_input_key(
             }
         }
         KeyEvent { code: KeyCode::Down, modifiers: _, .. } => {
-            if let Some(idx) = state.history_index {
+            // 用户已手动向上滚动 → 回滚到底部
+            if state.scroll_offset > 0 {
+                if state.scroll_offset <= 3 {
+                    state.scroll_offset = 0;
+                } else {
+                    state.scroll_offset = state.scroll_offset.saturating_sub(3);
+                }
+            } else if let Some(idx) = state.history_index {
+                // 在底部 → 浏览输入历史
                 if idx + 1 < state.input_history.len() {
                     state.history_index = Some(idx + 1);
                     state.input_buffer = state.input_history[idx + 1].clone();
