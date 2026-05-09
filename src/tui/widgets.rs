@@ -84,6 +84,7 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
     let scroll_v = if state.streaming { max_scroll } else { state.scroll_offset.min(max_scroll) };
     let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::NONE))
+        .wrap(Wrap { trim: true })
         .scroll((scroll_v, 0));
 
     f.render_widget(paragraph, area);
