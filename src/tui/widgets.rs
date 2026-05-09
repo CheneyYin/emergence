@@ -24,16 +24,26 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
     for msg in &state.messages {
         match msg {
             RenderedMessage::User { timestamp, content } => {
-                lines.push(Line::from(vec![
-                    Span::styled(format!("[{}] You: ", timestamp), themes::dim_style()),
-                    Span::styled(content, themes::user_style()),
-                ]));
+                let content_lines: Vec<&str> = content.lines().collect();
+                for (i, line_content) in content_lines.iter().enumerate() {
+                    if i == 0 {
+                        lines.push(Line::from(vec![
+                            Span::styled(format!("[{}] You: ", timestamp), themes::dim_style()),
+                            Span::styled(*line_content, themes::user_style()),
+                        ]));
+                    } else {
+                        lines.push(Line::from(vec![
+                            Span::styled(*line_content, themes::user_style()),
+                        ]));
+                    }
+                }
             }
             RenderedMessage::Assistant { timestamp, content, thinking, duration, tokens } => {
                 if let Some(t) = thinking {
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("🤖 (thinking): {}", t), themes::thinking_style()),
-                    ]));
+                    let think_lines: Vec<Line> = t.lines().map(|l| {
+                        Line::from(vec![Span::styled(l, themes::thinking_style())])
+                    }).collect();
+                    lines.extend(think_lines);
                 }
                 let mut prefix = format!("[{}] 🤖", timestamp);
                 if let Some(d) = duration {
@@ -42,10 +52,20 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
                 if let Some(tok) = tokens {
                     prefix.push_str(&format!(" {} tokens", tok));
                 }
-                lines.push(Line::from(vec![
-                    Span::styled(format!("{} ", prefix), themes::dim_style()),
-                    Span::styled(content, themes::assistant_style()),
-                ]));
+                // 按换行拆分内容，第一行包含前缀，后续行只有内容
+                let content_lines: Vec<&str> = content.lines().collect();
+                for (i, line_content) in content_lines.iter().enumerate() {
+                    if i == 0 {
+                        lines.push(Line::from(vec![
+                            Span::styled(format!("{} ", &prefix), themes::dim_style()),
+                            Span::styled(*line_content, themes::assistant_style()),
+                        ]));
+                    } else {
+                        lines.push(Line::from(vec![
+                            Span::styled(*line_content, themes::assistant_style()),
+                        ]));
+                    }
+                }
             }
             RenderedMessage::ToolCall { tool, params, duration } => {
                 let mut prefix = format!("tool:{}", tool);
