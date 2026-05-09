@@ -150,6 +150,10 @@ async fn handle_input_key(
     match key {
         KeyEvent { code: KeyCode::Char('s'), modifiers: KeyModifiers::CONTROL, .. } |
         KeyEvent { code: KeyCode::Enter, modifiers: _, .. } => {
+            // 不要在 streaming 或等待许可时吞掉输入 — AgentLoop 会静默丢弃
+            if state.streaming || state.show_permission_dialog.is_some() {
+                return Ok(());
+            }
             if !state.input_buffer.trim().is_empty() {
                 let input = std::mem::take(&mut state.input_buffer);
                 if state.input_history.last().map(|s| s != &input).unwrap_or(true) {
@@ -160,6 +164,7 @@ async fn handle_input_key(
                 }
                 state.history_index = None;
                 state.pending_input.clear();
+                state.scroll_offset = 0; // 新对话，复位滚动
                 action_tx.send(Action::Submit(input))?;
                 state.status_text = "emergence · 处理中 · ⏳ streaming".into();
             }
@@ -316,13 +321,14 @@ pub(crate) mod tests {
         assert_eq!(dialog.risk, RiskLevel::Write);
     }
 
-    /// Verifies that handle_app_event processes AgentDone by stopping streaming and updating status.
+    /// Verifies that handle_app_event processes AgentDone by stopping streaming, resetting scroll, and updating status.
     #[test]
     fn test_handle_agent_done() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: true, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 0 };
+        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: true, input_history: vec![], history_index: None, pending_input: String::new(), scroll_offset: 42 };
         let event = AppEvent::AgentDone { stop_reason: StopReason::EndTurn };
         handle_app_event(event, &mut state).unwrap();
         assert!(!state.streaming);
+        assert_eq!(state.scroll_offset, 0);
         assert!(state.status_text.contains("ready"));
     }
 
@@ -408,6 +414,7 @@ fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()>
         }
         AppEvent::AgentDone { stop_reason } => {
             state.streaming = false;
+            state.scroll_offset = 0; // 新内容完成，滚回底部
             state.status_text = format!("emergence · ✓ ready ({:?})", stop_reason);
         }
         AppEvent::Error { message } => {
