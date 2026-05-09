@@ -91,13 +91,9 @@ async fn app_loop(
             }
         })?;
 
-        // 使用 poll() 代替 spawn_blocking + read()：
-        // spawn_blocking 内的阻塞调用无法被 select! 取消，导致 /quit 后进程挂起
-        let has_event = event::poll(std::time::Duration::from_millis(50))?;
-
+        // 周期性检查键盘输入 + agent 事件：
+        // sleep 提供轮询间隔，避免 spawn_blocking 不可取消导致进程挂起
         tokio::select! {
-            biased; // 优先检查 app_event，避免 TUI 事件饥饿
-
             app_event = event_rx.recv() => {
                 match app_event {
                     Some(event) => handle_app_event(event, state)?,
@@ -105,18 +101,21 @@ async fn app_loop(
                 }
             }
 
-            _ = async {}, if has_event => {
-                let crossterm_event = event::read()?;
-                match crossterm_event {
-                    CEvent::Key(key) => {
-                        if state.show_permission_dialog.is_some() {
-                            handle_permission_key(key, state, action_tx)?;
-                        } else {
-                            handle_input_key(key, state, action_tx).await?;
+            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                // 非阻塞检查是否有输入事件
+                if event::poll(std::time::Duration::ZERO)? {
+                    let crossterm_event = event::read()?;
+                    match crossterm_event {
+                        CEvent::Key(key) => {
+                            if state.show_permission_dialog.is_some() {
+                                handle_permission_key(key, state, action_tx)?;
+                            } else {
+                                handle_input_key(key, state, action_tx).await?;
+                            }
                         }
+                        CEvent::Resize(_, _) => { /* 自动重绘 */ }
+                        _ => {}
                     }
-                    CEvent::Resize(_, _) => { /* 自动重绘 */ }
-                    _ => {}
                 }
             }
         }
