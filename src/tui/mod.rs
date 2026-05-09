@@ -91,9 +91,22 @@ async fn app_loop(
             }
         })?;
 
+        // 使用 poll() 代替 spawn_blocking + read()：
+        // spawn_blocking 内的阻塞调用无法被 select! 取消，导致 /quit 后进程挂起
+        let has_event = event::poll(std::time::Duration::from_millis(50))?;
+
         tokio::select! {
-            crossterm_event = tokio::task::spawn_blocking(|| event::read()) => {
-                let crossterm_event = crossterm_event??;
+            biased; // 优先检查 app_event，避免 TUI 事件饥饿
+
+            app_event = event_rx.recv() => {
+                match app_event {
+                    Some(event) => handle_app_event(event, state)?,
+                    None => break,
+                }
+            }
+
+            _ = async {}, if has_event => {
+                let crossterm_event = event::read()?;
                 match crossterm_event {
                     CEvent::Key(key) => {
                         if state.show_permission_dialog.is_some() {
@@ -104,13 +117,6 @@ async fn app_loop(
                     }
                     CEvent::Resize(_, _) => { /* 自动重绘 */ }
                     _ => {}
-                }
-            }
-
-            app_event = event_rx.recv() => {
-                match app_event {
-                    Some(event) => handle_app_event(event, state)?,
-                    None => break,
                 }
             }
         }
