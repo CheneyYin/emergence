@@ -334,6 +334,7 @@ impl AgentLoop {
         if let Err(e) = self.call_llm_with_retry(messages, &tools).await {
             let _ = self.event_tx.send(Event::Error { message: e.to_string() });
             self.state = AgentState::Idle;
+            let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
         }
 
         Ok(())
@@ -691,6 +692,7 @@ impl AgentLoop {
         if let Err(e) = retry_fut.await {
             let _ = self.event_tx.send(Event::Error { message: e.to_string() });
             self.state = AgentState::Idle;
+            let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
         }
 
         Ok(())
@@ -730,6 +732,7 @@ impl AgentLoop {
                 if let Err(e) = retry_fut.await {
                     let _ = self.event_tx.send(Event::Error { message: e.to_string() });
                     self.state = AgentState::Idle;
+                    let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
                 }
             }
             _ => {
