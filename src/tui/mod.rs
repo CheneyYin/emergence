@@ -401,7 +401,12 @@ fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()>
             }
         }
         AppEvent::ThinkingDelta { content } => {
-            state.messages.push(RenderedMessage::Thinking { content });
+            // 累积到上一条 thinking 消息，避免每个 token 一行
+            if let Some(RenderedMessage::Thinking { content: ref mut existing }) = state.messages.last_mut() {
+                existing.push_str(&content);
+            } else {
+                state.messages.push(RenderedMessage::Thinking { content });
+            }
         }
         AppEvent::ToolRequest { id, name, params, risk } => {
             state.show_permission_dialog = Some(PermissionDialogState {
