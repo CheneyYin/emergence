@@ -170,6 +170,11 @@ async fn handle_input_key(
                 state.history_index = None;
                 state.pending_input.clear();
                 state.scroll_offset = 0; // 新对话，复位滚动
+                // 用户消息立即回显在对话区域
+                state.messages.push(RenderedMessage::User {
+                    timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
+                    content: input.clone(),
+                });
                 action_tx.send(Action::Submit(input))?;
                 state.status_text = "emergence · 处理中 · ⏳ streaming".into();
             }
