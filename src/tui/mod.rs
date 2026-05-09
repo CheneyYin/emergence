@@ -1,7 +1,7 @@
 use std::io;
 use ratatui::prelude::*;
 use crossterm::{
-    event::{self, Event as CEvent, KeyCode, KeyModifiers, KeyEvent, DisableMouseCapture, EnableMouseCapture},
+    event::{self, Event as CEvent, KeyCode, KeyModifiers, KeyEvent},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -52,7 +52,7 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -71,7 +71,7 @@ pub async fn run(
     let res = app_loop(&mut terminal, &mut state, &action_tx, &mut event_rx).await;
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     res
