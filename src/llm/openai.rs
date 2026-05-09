@@ -44,6 +44,13 @@ impl OpenAIAdapter {
                     .filter(|p| matches!(p, crate::llm::ContentPart::ToolUse { .. }))
                     .collect();
                 if !tool_uses.is_empty() {
+                    // Extract Text parts as reasoning_content (DeepSeek thinking mode)
+                    let reasoning: String = parts.iter().filter_map(|p| {
+                        if let crate::llm::ContentPart::Text { text } = p { Some(text.as_str()) } else { None }
+                    }).collect::<Vec<_>>().join("");
+                    if !reasoning.is_empty() {
+                        msg_json["reasoning_content"] = serde_json::json!(reasoning);
+                    }
                     msg_json["content"] = serde_json::Value::Null;
                     let tool_calls: Vec<serde_json::Value> = tool_uses.iter().map(|tu| {
                         if let crate::llm::ContentPart::ToolUse { id, name, input } = tu {

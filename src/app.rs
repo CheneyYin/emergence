@@ -184,6 +184,7 @@ pub struct AgentLoop {
     event_tx: mpsc::UnboundedSender<Event>,
 
     tool_call_buffer: Option<(String, String, String)>,
+    thinking_buffer: String,
     retry_count: u32,
     max_retries: u32,
     should_exit: bool,
@@ -227,6 +228,7 @@ impl AgentLoop {
             action_rx,
             event_tx,
             tool_call_buffer: None,
+            thinking_buffer: String::new(),
             retry_count: 0,
             max_retries: 3,
             should_exit: false,
@@ -494,6 +496,7 @@ impl AgentLoop {
 
         self.state = AgentState::Streaming;
         self.tool_call_buffer = None;
+        self.thinking_buffer.clear();
 
         loop {
             tokio::select! {
@@ -534,6 +537,7 @@ impl AgentLoop {
                 Ok(true)
             }
             StreamEvent::ThinkingDelta(content) => {
+                self.thinking_buffer.push_str(&content);
                 let _ = self.event_tx.send(Event::ThinkingDelta { content });
                 Ok(true)
             }
@@ -554,16 +558,20 @@ impl AgentLoop {
                 match stop_reason {
                     StopReason::ToolUse => {
                         if let Some((id, name, args)) = self.tool_call_buffer.take() {
-                            // Push assistant tool_use message so API sees tool_calls before tool result
+                            // Push assistant tool_use message with reasoning content
+                            let thinking = std::mem::take(&mut self.thinking_buffer);
+                            let mut parts = Vec::new();
+                            if !thinking.is_empty() {
+                                parts.push(crate::llm::ContentPart::Text { text: thinking });
+                            }
+                            parts.push(crate::llm::ContentPart::ToolUse {
+                                id: id.clone(),
+                                name: name.clone(),
+                                input: serde_json::from_str(&args).unwrap_or_default(),
+                            });
                             let tool_use_msg = ChatMessage {
                                 role: Role::Assistant,
-                                content: Content::Parts(vec![
-                                    crate::llm::ContentPart::ToolUse {
-                                        id: id.clone(),
-                                        name: name.clone(),
-                                        input: serde_json::from_str(&args).unwrap_or_default(),
-                                    },
-                                ]),
+                                content: Content::Parts(parts),
                                 name: None,
                                 tool_call_id: None,
                             };
