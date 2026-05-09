@@ -432,9 +432,12 @@ impl AgentLoop {
                         let _ = self.event_tx.send(Event::TextDelta {
                             content: format!("{}\n", message), finish_reason: None,
                         });
+                        // 命令响应后必须发送 AgentDone，否则 TUI 的 streaming 不归零
+                        let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
                     }
                     CommandOutput::Error { message } => {
                         let _ = self.event_tx.send(Event::Error { message });
+                        let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
                     }
                     CommandOutput::Quit => {
                         should_quit = true;
@@ -448,10 +451,12 @@ impl AgentLoop {
                             content: format!("已切换到会话: {}\n", self.session.session().id),
                             finish_reason: None,
                         });
+                        let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
                     }
                 },
                 Err(e) => {
                     let _ = self.event_tx.send(Event::Error { message: e.to_string() });
+                    let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
                 }
             }
         }
