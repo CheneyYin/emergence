@@ -83,7 +83,13 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
     let col_width = (area.width as usize).max(1);
     let wrapped_estimate = total_chars / col_width + lines.len();
     let max_scroll = wrapped_estimate.saturating_sub(area.height as usize) as u16;
-    let scroll_v = if state.streaming { max_scroll } else { state.scroll_offset.min(max_scroll) };
+    // scroll_offset = 0 → 在底部（跟随最新消息）
+    // scroll_offset > 0 → 用户向上滚动 offset 行
+    let scroll_v = if state.streaming || state.scroll_offset == 0 {
+        max_scroll
+    } else {
+        max_scroll.saturating_sub(state.scroll_offset)
+    };
     let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::NONE))
         .wrap(Wrap { trim: true })
