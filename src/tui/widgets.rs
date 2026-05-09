@@ -78,9 +78,11 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
         }
     }
 
-    let line_count = lines.len();
-    // 自动跟随：streaming 时始终滚到底部，否则使用用户手动偏移
-    let max_scroll = line_count.saturating_sub(area.height as usize) as u16;
+    // 估算 wrap 后的视觉行数：总字符数 / 面板宽度 + 原始行数
+    let total_chars: usize = lines.iter().map(|l| l.width()).sum();
+    let col_width = (area.width as usize).max(1);
+    let wrapped_estimate = total_chars / col_width + lines.len();
+    let max_scroll = wrapped_estimate.saturating_sub(area.height as usize) as u16;
     let scroll_v = if state.streaming { max_scroll } else { state.scroll_offset.min(max_scroll) };
     let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::NONE))
