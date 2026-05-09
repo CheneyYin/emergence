@@ -77,18 +77,24 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
                 ]));
             }
             RenderedMessage::ToolResult { output } => {
-                let truncated: String = output.lines().take(20).collect::<Vec<_>>().join("\n");
+                let truncated: Vec<&str> = output.lines().take(20).collect();
                 lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("┌──────────────────────────────┐\n{}└──────────────────────────────┘", truncated),
-                        themes::tool_style(),
-                    ),
+                    Span::styled("┌", themes::tool_style()),
+                ]));
+                for line_content in &truncated {
+                    lines.push(Line::from(vec![
+                        Span::styled(format!("│ {}", line_content), themes::tool_style()),
+                    ]));
+                }
+                lines.push(Line::from(vec![
+                    Span::styled("└", themes::tool_style()),
                 ]));
             }
             RenderedMessage::Thinking { content } => {
-                lines.push(Line::from(vec![
-                    Span::styled(format!("🤖 (thinking): {}", content), themes::thinking_style()),
-                ]));
+                let think_lines: Vec<Line> = content.lines().map(|l| {
+                    Line::from(vec![Span::styled(l, themes::thinking_style())])
+                }).collect();
+                lines.extend(think_lines);
             }
             RenderedMessage::Error { message } => {
                 lines.push(Line::from(vec![
