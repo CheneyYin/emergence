@@ -12,7 +12,7 @@ use crate::session::{SessionKey, SessionManager};
 use crate::tools::ToolRegistry;
 use futures::StreamExt;
 use std::path::PathBuf;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 /// Agent 状态机
 #[derive(Debug, Clone, PartialEq)]
@@ -184,8 +184,6 @@ pub struct AgentLoop {
     state: AgentState,
     model: String,
     system_prompt: String,
-    stream_cancel: Option<oneshot::Sender<()>>,
-
     action_rx: mpsc::UnboundedReceiver<Action>,
     event_tx: mpsc::UnboundedSender<Event>,
 
@@ -282,7 +280,6 @@ impl AgentLoop {
             state: AgentState::Idle,
             model,
             system_prompt: "You are a helpful coding assistant.".into(),
-            stream_cancel: None,
             action_rx,
             event_tx,
             tool_call_buffer: None,
@@ -324,12 +321,7 @@ impl AgentLoop {
                         }
                     }
                     Action::Cancel => {
-                        self.cancel_stream();
-                        if let Some(turn) = self.session.current_turn() {
-                            if turn.status == crate::session::TurnStatus::InProgress {
-                                let _ = self.session.complete_turn();
-                            }
-                        }
+                        // handled in stream loop when streaming; no-op otherwise
                     }
                     Action::Quit => {
                         self.save_and_exit().await?;
@@ -356,12 +348,6 @@ impl AgentLoop {
             }
         }
         Ok(())
-    }
-
-    fn cancel_stream(&mut self) {
-        if let Some(cancel) = self.stream_cancel.take() {
-            let _ = cancel.send(());
-        }
     }
 
     async fn handle_submit(&mut self, input: String) -> anyhow::Result<()> {
@@ -592,9 +578,6 @@ impl AgentLoop {
             ..gen_config
         };
 
-        let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
-        self.stream_cancel = Some(cancel_tx);
-
         let mut stream = provider
             .chat(model_name, &messages, tools, &gen_config)
             .await?;
@@ -605,10 +588,12 @@ impl AgentLoop {
 
         loop {
             tokio::select! {
-                _ = &mut cancel_rx => {
-                    self.state = AgentState::Idle;
-                    let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
-                    return Ok(());
+                action = self.action_rx.recv() => {
+                    if matches!(action, Some(Action::Cancel)) {
+                        self.state = AgentState::Idle;
+                        let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+                        return Ok(());
+                    }
                 }
                 item = stream.next() => {
                     match item {
@@ -626,8 +611,6 @@ impl AgentLoop {
                 }
             }
         }
-
-        self.stream_cancel = None;
         Ok(())
     }
 
