@@ -543,7 +543,13 @@ impl AgentLoop {
             }
             StreamEvent::ToolCallDelta { id, name, arguments_json_fragment } => {
                 if let Some((_, _, ref mut args)) = &mut self.tool_call_buffer {
-                    args.push_str(&arguments_json_fragment);
+                    // 用"最长优先"策略累积：若新片段是累积内容的扩展，则追加；
+                    // 若新片段更长（重叠/完整重发），则替换
+                    if arguments_json_fragment.starts_with(args.as_str()) {
+                        args.push_str(&arguments_json_fragment[args.len()..]);
+                    } else if arguments_json_fragment.len() > args.len() {
+                        *args = arguments_json_fragment;
+                    }
                 } else {
                     self.tool_call_buffer = Some((id, name, arguments_json_fragment));
                 }
