@@ -114,7 +114,11 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
         .block(Block::default().borders(Borders::NONE))
         .wrap(Wrap { trim: true })
         .scroll((
-            if state.streaming { max_scroll } else { state.scroll_y.min(max_scroll as usize) as u16 },
+            if state.streaming || state.scroll_y == 0 {
+                max_scroll  // 默认跟底
+            } else {
+                state.scroll_y.min(max_scroll as usize) as u16
+            },
             0,
         ));
 
