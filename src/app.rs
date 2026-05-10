@@ -543,13 +543,7 @@ impl AgentLoop {
             }
             StreamEvent::ToolCallDelta { id, name, arguments_json_fragment } => {
                 if let Some((_, _, ref mut args)) = &mut self.tool_call_buffer {
-                    // 用"最长优先"策略累积：若新片段是累积内容的扩展，则追加；
-                    // 若新片段更长（重叠/完整重发），则替换
-                    if arguments_json_fragment.starts_with(args.as_str()) {
-                        args.push_str(&arguments_json_fragment[args.len()..]);
-                    } else if arguments_json_fragment.len() > args.len() {
-                        *args = arguments_json_fragment;
-                    }
+                    args.push_str(&arguments_json_fragment);
                 } else {
                     self.tool_call_buffer = Some((id, name, arguments_json_fragment));
                 }
@@ -605,7 +599,8 @@ impl AgentLoop {
         args_json: String,
         _tools: &[ToolDefinition],
     ) -> anyhow::Result<()> {
-        let params: serde_json::Value = serde_json::from_str(&args_json)
+        let cleaned = clean_tool_args(&args_json);
+        let params: serde_json::Value = serde_json::from_str(&cleaned)
             .map_err(|e| anyhow::anyhow!("tool call args parse error: {}", e))?;
 
         // Push assistant tool_use 消息到会话（解析成功后再 push，确保 tool result 一定跟随）
@@ -801,6 +796,34 @@ impl AgentLoop {
 
         Ok(())
     }
+}
+
+/// 清理累积的工具调用参数 JSON：从可能重复/重叠的字符串中提取有效 JSON
+fn clean_tool_args(raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return "{}".into();
+    }
+    // 尝试直接解析
+    if serde_json::from_str::<serde_json::Value>(raw).is_ok() {
+        return raw.to_string();
+    }
+    // 查找第一个完整的 JSON 对象 {...}（处理重复拼接）
+    if let Some(end) = raw.find("}{") {
+        let first = &raw[..=end];  // includes the first }
+        if serde_json::from_str::<serde_json::Value>(first).is_ok() {
+            return first.to_string();
+        }
+    }
+    // 尝试取最后一个 {...}
+    if let Some(last_start) = raw.rfind("}{") {
+        let last = &raw[last_start + 1..];
+        if serde_json::from_str::<serde_json::Value>(last).is_ok() {
+            return last.to_string();
+        }
+    }
+    // 回退：返回 {} 避免崩溃
+    "{}".into()
 }
 
 #[cfg(test)]
