@@ -61,17 +61,20 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
 
-      - name: create / update nightly release
+      - name: set timestamp
+        run: echo "TS=$(date -u +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+
+      - name: create nightly release
         uses: softprops/action-gh-release@v2
         with:
-          name: Nightly Build
-          tag_name: nightly
+          name: Nightly Build (${{ env.TS }})
+          tag_name: nightly-${{ env.TS }}
           prerelease: true
           body: |
             每日自动构建，基于 `master` 分支最新提交。
 
             **Commit:** ${{ github.sha }}
-            **日期:** $(date -u +%Y-%m-%d)
+            **UTC 时间:** ${{ env.TS }}
           files: emergence-*/emergence-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
