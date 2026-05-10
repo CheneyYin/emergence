@@ -1,9 +1,9 @@
-use emergence::tools::*;
-use emergence::tools::file::{ReadTool, WriteTool, EditTool};
-use emergence::tools::search::{GrepTool, GlobTool};
-use emergence::tools::bash::BashTool;
-use emergence::tools::web::{WebFetchTool, WebSearchTool};
 use emergence::permissions::RiskLevel;
+use emergence::tools::bash::BashTool;
+use emergence::tools::file::{EditTool, ReadTool, WriteTool};
+use emergence::tools::search::{GlobTool, GrepTool};
+use emergence::tools::web::{WebFetchTool, WebSearchTool};
+use emergence::tools::*;
 
 /// Verifies that ToolRegistry can register all real tool types and each can be retrieved by its canonical name.
 #[test]
@@ -71,7 +71,10 @@ async fn test_registry_execute_read_tool() {
     let mut registry = ToolRegistry::new();
     registry.register(ReadTool);
 
-    let output = registry.execute("read", serde_json::json!({"file_path": "src/main.rs"})).await.unwrap();
+    let output = registry
+        .execute("read", serde_json::json!({"file_path": "src/main.rs"}))
+        .await
+        .unwrap();
     assert!(output.content.contains("main.rs"));
     assert!(output.content.contains("行"));
 }

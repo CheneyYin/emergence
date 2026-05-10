@@ -46,12 +46,29 @@ fn test_all_event_variants_serialize() {
     let events = vec![
         HookEvent::SessionStart,
         HookEvent::SessionEnd,
-        HookEvent::PreToolExecute { tool: "read".into(), params: serde_json::json!({"file_path": "/x"}) },
-        HookEvent::PostToolExecute { tool: "read".into(), result: emergence::tools::ToolOutput { content: "ok".into(), metadata: None } },
-        HookEvent::UserInput { text: "hello".into() },
+        HookEvent::PreToolExecute {
+            tool: "read".into(),
+            params: serde_json::json!({"file_path": "/x"}),
+        },
+        HookEvent::PostToolExecute {
+            tool: "read".into(),
+            result: emergence::tools::ToolOutput {
+                content: "ok".into(),
+                metadata: None,
+            },
+        },
+        HookEvent::UserInput {
+            text: "hello".into(),
+        },
         HookEvent::PreLLMCall { messages: vec![] },
-        HookEvent::PostLLMCall { response: "ok".into(), usage: Default::default() },
-        HookEvent::PermissionRequested { tool: "bash".into(), risk: RiskLevel::System },
+        HookEvent::PostLLMCall {
+            response: "ok".into(),
+            usage: Default::default(),
+        },
+        HookEvent::PermissionRequested {
+            tool: "bash".into(),
+            risk: RiskLevel::System,
+        },
     ];
     for event in &events {
         let json = serde_json::to_string(event).unwrap();
@@ -69,8 +86,16 @@ async fn test_merge_dispatches_to_both() {
     let dir = TempDir::new().unwrap();
     let p1 = dir.path().join("h1.json");
     let p2 = dir.path().join("h2.json");
-    fs::write(&p1, r#"{"hooks": [{"event": "SessionStart", "type": "shell", "command": "echo 1"}]}"#).unwrap();
-    fs::write(&p2, r#"{"hooks": [{"event": "SessionStart", "type": "shell", "command": "echo 2"}]}"#).unwrap();
+    fs::write(
+        &p1,
+        r#"{"hooks": [{"event": "SessionStart", "type": "shell", "command": "echo 1"}]}"#,
+    )
+    .unwrap();
+    fs::write(
+        &p2,
+        r#"{"hooks": [{"event": "SessionStart", "type": "shell", "command": "echo 2"}]}"#,
+    )
+    .unwrap();
 
     reg1 = HookRegistry::load(&p1).unwrap();
     reg2 = HookRegistry::load(&p2).unwrap();

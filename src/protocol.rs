@@ -1,5 +1,5 @@
-use crate::permissions::RiskLevel;
 use crate::llm::StopReason;
+use crate::permissions::RiskLevel;
 
 /// TUI → Agent Loop
 #[derive(Debug, Clone)]
@@ -63,16 +63,23 @@ mod tests {
     /// Verifies that Event variants with payloads can be constructed.
     #[test]
     fn test_event_variants() {
-        let text = Event::TextDelta { content: "hi".into(), finish_reason: None };
+        let text = Event::TextDelta {
+            content: "hi".into(),
+            finish_reason: None,
+        };
         assert!(matches!(text, Event::TextDelta { .. }));
 
         let tool_req = Event::ToolRequest {
-            id: "t1".into(), name: "read".into(),
-            params: serde_json::json!({}), risk: crate::permissions::RiskLevel::ReadOnly,
+            id: "t1".into(),
+            name: "read".into(),
+            params: serde_json::json!({}),
+            risk: crate::permissions::RiskLevel::ReadOnly,
         };
         assert!(matches!(tool_req, Event::ToolRequest { .. }));
 
-        let err = Event::Error { message: "oops".into() };
+        let err = Event::Error {
+            message: "oops".into(),
+        };
         assert!(matches!(err, Event::Error { .. }));
     }
 }

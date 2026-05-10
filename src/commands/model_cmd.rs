@@ -4,12 +4,24 @@ pub struct ModelCommand;
 
 #[async_trait::async_trait]
 impl Command for ModelCommand {
-    fn name(&self) -> &str { "model" }
-    fn aliases(&self) -> &[&str] { &["m"] }
-    fn description(&self) -> &str { "快速切换模型" }
-    fn usage(&self) -> &str { "/model <provider/model>" }
+    fn name(&self) -> &str {
+        "model"
+    }
+    fn aliases(&self) -> &[&str] {
+        &["m"]
+    }
+    fn description(&self) -> &str {
+        "快速切换模型"
+    }
+    fn usage(&self) -> &str {
+        "/model <provider/model>"
+    }
 
-    async fn execute(&self, args: &[String], ctx: &mut CommandContext<'_>) -> anyhow::Result<CommandOutput> {
+    async fn execute(
+        &self,
+        args: &[String],
+        ctx: &mut CommandContext<'_>,
+    ) -> anyhow::Result<CommandOutput> {
         if let Some(model) = args.first() {
             *ctx.model = model.clone();
             ctx.config.settings.model.clone_from(model);
@@ -28,12 +40,20 @@ impl Command for ModelCommand {
 mod tests {
     use super::*;
 
-    fn make_ctx() -> (crate::session::SessionManager, crate::config::ConfigManager, String, bool) {
+    fn make_ctx() -> (
+        crate::session::SessionManager,
+        crate::config::ConfigManager,
+        String,
+        bool,
+    ) {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let config = crate::config::ConfigManager::load(
-            home.path().to_path_buf(), project.path().to_path_buf(), None,
-        ).unwrap();
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         let session = crate::session::SessionManager::new("test".into());
         (session, config, "deepseek/v4".into(), false)
     }
@@ -43,13 +63,24 @@ mod tests {
     async fn test_model_shows_current() {
         let (mut session, mut config, mut model, mut should_quit) = make_ctx();
         let cmd = ModelCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
-            CommandOutput::Success { message } => assert!(message.contains("deepseek/deepseek-v4-pro")),
+            CommandOutput::Success { message } => {
+                assert!(message.contains("deepseek/deepseek-v4-pro"))
+            }
             other => panic!("expected Success, got {:?}", other),
         }
     }
@@ -59,11 +90,20 @@ mod tests {
     async fn test_model_switches() {
         let (mut session, mut config, mut model, mut should_quit) = make_ctx();
         let cmd = ModelCommand;
-        let result = cmd.execute(&["gpt-4".into()], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &["gpt-4".into()],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(model, "gpt-4");
         match result {
             CommandOutput::Success { message } => assert!(message.contains("gpt-4")),

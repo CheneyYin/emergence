@@ -1,4 +1,4 @@
-use ratatui::style::{Color, Style, Modifier};
+use ratatui::style::{Color, Modifier, Style};
 
 pub struct Theme {
     pub bg: Color,
@@ -31,7 +31,9 @@ pub const DEFAULT_THEME: Theme = Theme {
 };
 
 pub fn user_style() -> Style {
-    Style::default().fg(DEFAULT_THEME.user_color).add_modifier(Modifier::BOLD)
+    Style::default()
+        .fg(DEFAULT_THEME.user_color)
+        .add_modifier(Modifier::BOLD)
 }
 
 pub fn assistant_style() -> Style {
@@ -39,7 +41,9 @@ pub fn assistant_style() -> Style {
 }
 
 pub fn thinking_style() -> Style {
-    Style::default().fg(DEFAULT_THEME.thinking_color).add_modifier(Modifier::ITALIC)
+    Style::default()
+        .fg(DEFAULT_THEME.thinking_color)
+        .add_modifier(Modifier::ITALIC)
 }
 
 pub fn tool_style() -> Style {

@@ -4,12 +4,24 @@ pub struct TokensCommand;
 
 #[async_trait::async_trait]
 impl Command for TokensCommand {
-    fn name(&self) -> &str { "tokens" }
-    fn aliases(&self) -> &[&str] { &["t"] }
-    fn description(&self) -> &str { "显示当前 token 用量详情" }
-    fn usage(&self) -> &str { "/tokens" }
+    fn name(&self) -> &str {
+        "tokens"
+    }
+    fn aliases(&self) -> &[&str] {
+        &["t"]
+    }
+    fn description(&self) -> &str {
+        "显示当前 token 用量详情"
+    }
+    fn usage(&self) -> &str {
+        "/tokens"
+    }
 
-    async fn execute(&self, _args: &[String], ctx: &mut CommandContext<'_>) -> anyhow::Result<CommandOutput> {
+    async fn execute(
+        &self,
+        _args: &[String],
+        ctx: &mut CommandContext<'_>,
+    ) -> anyhow::Result<CommandOutput> {
         let tokens = ctx.session.estimated_tokens();
         let threshold = ctx.config.settings.session.compaction_threshold_tokens;
         let pct = if threshold > 0 {
@@ -35,12 +47,20 @@ impl Command for TokensCommand {
 mod tests {
     use super::*;
 
-    fn make_ctx() -> (crate::session::SessionManager, crate::config::ConfigManager, String, bool) {
+    fn make_ctx() -> (
+        crate::session::SessionManager,
+        crate::config::ConfigManager,
+        String,
+        bool,
+    ) {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let config = crate::config::ConfigManager::load(
-            home.path().to_path_buf(), project.path().to_path_buf(), None,
-        ).unwrap();
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         let session = crate::session::SessionManager::new("test".into());
         (session, config, "default".into(), false)
     }
@@ -50,11 +70,20 @@ mod tests {
     async fn test_tokens_shows_stats() {
         let (mut session, mut config, mut model, mut should_quit) = make_ctx();
         let cmd = TokensCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => {
                 assert!(message.contains("总 token 数"));

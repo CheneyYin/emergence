@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-use async_trait::async_trait;
 use super::{Session, SessionId, SessionKey, SessionMeta};
+use async_trait::async_trait;
+use std::path::PathBuf;
 
 /// 会话持久化 trait
 #[async_trait]
@@ -163,7 +163,10 @@ mod tests {
         let session = Session::new("2026-05-06-test".into());
         store.save(&session).await.unwrap();
 
-        let loaded = store.load(&SessionKey::Id("2026-05-06-test".into())).await.unwrap();
+        let loaded = store
+            .load(&SessionKey::Id("2026-05-06-test".into()))
+            .await
+            .unwrap();
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap().id, "2026-05-06-test");
     }
@@ -190,7 +193,10 @@ mod tests {
         store.save(&Session::new("s1".into())).await.unwrap();
         store.set_alias("s1", "my-session").await.unwrap();
 
-        let loaded = store.load(&SessionKey::Alias("my-session".into())).await.unwrap();
+        let loaded = store
+            .load(&SessionKey::Alias("my-session".into()))
+            .await
+            .unwrap();
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap().id, "s1");
     }
@@ -202,9 +208,15 @@ mod tests {
         let store = JsonFileStore::new(dir.path().to_path_buf());
 
         store.save(&Session::new("to-delete".into())).await.unwrap();
-        store.delete(&SessionKey::Id("to-delete".into())).await.unwrap();
+        store
+            .delete(&SessionKey::Id("to-delete".into()))
+            .await
+            .unwrap();
 
-        let loaded = store.load(&SessionKey::Id("to-delete".into())).await.unwrap();
+        let loaded = store
+            .load(&SessionKey::Id("to-delete".into()))
+            .await
+            .unwrap();
         assert!(loaded.is_none());
     }
 }

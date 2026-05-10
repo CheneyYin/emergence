@@ -27,10 +27,17 @@ fn test_expand_env_vars_in_settings_file() {
     std::env::set_var("EMERGENCE_INTEGRATION_TEST_MODEL", "env-model");
     let home = home_dir();
     let project = project_dir();
-    write_settings(&home, r#"{"model":"${EMERGENCE_INTEGRATION_TEST_MODEL}","version":3}"#);
+    write_settings(
+        &home,
+        r#"{"model":"${EMERGENCE_INTEGRATION_TEST_MODEL}","version":3}"#,
+    );
 
-    let cm = ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-        .unwrap();
+    let cm = ConfigManager::load(
+        home.path().to_path_buf(),
+        project.path().to_path_buf(),
+        None,
+    )
+    .unwrap();
     assert_eq!(cm.settings.model, "env-model");
     assert_eq!(cm.settings.version, 3);
     std::env::remove_var("EMERGENCE_INTEGRATION_TEST_MODEL");
@@ -52,9 +59,12 @@ fn test_expand_env_vars_direct_call() {
 fn test_config_manager_key_behavior() {
     let home = home_dir();
     let project = project_dir();
-    let mut cm =
-        ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-            .unwrap();
+    let mut cm = ConfigManager::load(
+        home.path().to_path_buf(),
+        project.path().to_path_buf(),
+        None,
+    )
+    .unwrap();
 
     assert_eq!(cm.settings.version, 1);
     assert_eq!(cm.settings.generation.max_tokens, 32000);
@@ -73,9 +83,12 @@ fn test_project_settings_override_user_settings() {
     write_settings(&home, r#"{"model":"user-model","version":2}"#);
     write_settings(&project, r#"{"model":"project-model"}"#);
 
-    let cm =
-        ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-            .unwrap();
+    let cm = ConfigManager::load(
+        home.path().to_path_buf(),
+        project.path().to_path_buf(),
+        None,
+    )
+    .unwrap();
     assert_eq!(cm.settings.model, "project-model");
     // version from user settings should survive (not overridden by project)
     assert_eq!(cm.settings.version, 2);
@@ -89,9 +102,12 @@ fn test_user_settings_preserved_when_no_project_settings() {
 
     write_settings(&home, r#"{"model":"only-user-model","version":5}"#);
 
-    let cm =
-        ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-            .unwrap();
+    let cm = ConfigManager::load(
+        home.path().to_path_buf(),
+        project.path().to_path_buf(),
+        None,
+    )
+    .unwrap();
     assert_eq!(cm.settings.model, "only-user-model");
     assert_eq!(cm.settings.version, 5);
 }
@@ -127,9 +143,12 @@ fn test_generation_config_from_settings() {
         r#"{"generation":{"max_tokens":4096,"temperature":0.2,"top_p":0.95,"thinking":4000}}"#,
     );
 
-    let cm =
-        ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-            .unwrap();
+    let cm = ConfigManager::load(
+        home.path().to_path_buf(),
+        project.path().to_path_buf(),
+        None,
+    )
+    .unwrap();
     let gc = cm.generation_config();
 
     assert_eq!(gc.max_tokens, 4096);
@@ -146,9 +165,12 @@ fn test_generation_config_from_settings() {
 fn test_session_store_dir_expands_tilde() {
     let home = home_dir();
     let project = project_dir();
-    let cm =
-        ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-            .unwrap();
+    let cm = ConfigManager::load(
+        home.path().to_path_buf(),
+        project.path().to_path_buf(),
+        None,
+    )
+    .unwrap();
     let dir = cm.session_store_dir();
     // Default is "~/.emergence/sessions", should expand to an absolute path
     assert!(!dir.to_string_lossy().starts_with('~'));
@@ -175,7 +197,10 @@ fn test_settings_roundtrip() {
     assert_eq!(settings.model, "test-model");
     assert_eq!(settings.providers.len(), 1);
     assert_eq!(settings.providers["openai"].api_key, "sk-key");
-    assert_eq!(settings.providers["openai"].base_url, "https://api.example.com/v1");
+    assert_eq!(
+        settings.providers["openai"].base_url,
+        "https://api.example.com/v1"
+    );
     assert_eq!(settings.session.store_dir, "/tmp/sessions");
     assert_eq!(settings.session.compaction_threshold_tokens, 50000);
 
@@ -198,6 +223,9 @@ fn test_settings_partial_json_fills_defaults() {
     assert_eq!(settings.generation.max_tokens, 32000); // default
     assert_eq!(settings.generation.temperature, 0.7); // default
     assert!(settings.providers.is_empty());
-    assert!(settings.permissions.auto_approve.contains(&"read".to_string()));
+    assert!(settings
+        .permissions
+        .auto_approve
+        .contains(&"read".to_string()));
     assert!(settings.session.auto_save);
 }

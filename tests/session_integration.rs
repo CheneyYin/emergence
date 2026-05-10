@@ -1,6 +1,6 @@
-use emergence::session::{Session, SessionManager, SessionKey};
+use emergence::llm::{ChatMessage, Content, Role};
 use emergence::session::store::{JsonFileStore, SessionStore};
-use emergence::llm::{ChatMessage, Role, Content};
+use emergence::session::{Session, SessionKey, SessionManager};
 
 fn make_user_msg(text: &str) -> ChatMessage {
     ChatMessage {
@@ -76,7 +76,10 @@ async fn test_save_and_load_roundtrip() {
 
     store.save(sm.session()).await.unwrap();
 
-    let loaded = store.load(&SessionKey::Alias("persisted-alias".into())).await.unwrap();
+    let loaded = store
+        .load(&SessionKey::Alias("persisted-alias".into()))
+        .await
+        .unwrap();
     assert!(loaded.is_some());
     let session = loaded.unwrap();
     assert_eq!(session.id, "persist-1");
@@ -96,11 +99,18 @@ async fn test_store_list_and_delete() {
     let list = store.list().await.unwrap();
     assert_eq!(list.len(), 3);
 
-    store.delete(&SessionKey::Id("list-2".into())).await.unwrap();
+    store
+        .delete(&SessionKey::Id("list-2".into()))
+        .await
+        .unwrap();
     let list = store.list().await.unwrap();
     assert_eq!(list.len(), 2);
 
-    assert!(store.load(&SessionKey::Id("list-2".into())).await.unwrap().is_none());
+    assert!(store
+        .load(&SessionKey::Id("list-2".into()))
+        .await
+        .unwrap()
+        .is_none());
 }
 
 /// Verifies that JsonFileStore.load() returns None for a session ID that does not exist.
@@ -109,7 +119,10 @@ async fn test_store_load_nonexistent() {
     let dir = tempfile::tempdir().unwrap();
     let store = JsonFileStore::new(dir.path().to_path_buf());
 
-    let result = store.load(&SessionKey::Id("nonexistent".into())).await.unwrap();
+    let result = store
+        .load(&SessionKey::Id("nonexistent".into()))
+        .await
+        .unwrap();
     assert!(result.is_none());
 }
 
@@ -124,14 +137,23 @@ async fn test_store_alias_resolution() {
     store.save(sm.session()).await.unwrap();
 
     // 通过 alias 加载
-    let by_alias = store.load(&SessionKey::Alias("quick-access".into())).await.unwrap();
+    let by_alias = store
+        .load(&SessionKey::Alias("quick-access".into()))
+        .await
+        .unwrap();
     assert!(by_alias.is_some());
 
     // 通过 id 加载
-    let by_id = store.load(&SessionKey::Id("alias-resolve".into())).await.unwrap();
+    let by_id = store
+        .load(&SessionKey::Id("alias-resolve".into()))
+        .await
+        .unwrap();
     assert!(by_id.is_some());
 
     // 不存在的 alias
-    let missing = store.load(&SessionKey::Alias("no-such-alias".into())).await.unwrap();
+    let missing = store
+        .load(&SessionKey::Alias("no-such-alias".into()))
+        .await
+        .unwrap();
     assert!(missing.is_none());
 }

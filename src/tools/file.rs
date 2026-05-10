@@ -5,8 +5,12 @@ pub struct ReadTool;
 
 #[async_trait::async_trait]
 impl Tool for ReadTool {
-    fn name(&self) -> &str { "read" }
-    fn description(&self) -> &str { "读取文件内容，支持 offset/limit 分页" }
+    fn name(&self) -> &str {
+        "read"
+    }
+    fn description(&self) -> &str {
+        "读取文件内容，支持 offset/limit 分页"
+    }
 
     fn parameters(&self) -> serde_json::Value {
         serde_json::json!({
@@ -20,10 +24,13 @@ impl Tool for ReadTool {
         })
     }
 
-    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel { RiskLevel::ReadOnly }
+    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel {
+        RiskLevel::ReadOnly
+    }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<ToolOutput> {
-        let file_path = params["file_path"].as_str()
+        let file_path = params["file_path"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("缺少 file_path 参数"))?;
         let offset = params["offset"].as_u64().unwrap_or(0) as usize;
         let limit = params["limit"].as_u64().unwrap_or(2000) as usize;
@@ -34,7 +41,8 @@ impl Tool for ReadTool {
         let result = lines.join("\n");
 
         Ok(ToolOutput {
-            content: format!("{}(共 {} 行，显示第 {}-{} 行):\n{}",
+            content: format!(
+                "{}(共 {} 行，显示第 {}-{} 行):\n{}",
                 file_path,
                 content.lines().count(),
                 offset,
@@ -50,8 +58,12 @@ pub struct WriteTool;
 
 #[async_trait::async_trait]
 impl Tool for WriteTool {
-    fn name(&self) -> &str { "write" }
-    fn description(&self) -> &str { "创建或覆盖文件" }
+    fn name(&self) -> &str {
+        "write"
+    }
+    fn description(&self) -> &str {
+        "创建或覆盖文件"
+    }
 
     fn parameters(&self) -> serde_json::Value {
         serde_json::json!({
@@ -64,12 +76,16 @@ impl Tool for WriteTool {
         })
     }
 
-    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel { RiskLevel::Write }
+    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel {
+        RiskLevel::Write
+    }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<ToolOutput> {
-        let file_path = params["file_path"].as_str()
+        let file_path = params["file_path"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("缺少 file_path 参数"))?;
-        let content = params["content"].as_str()
+        let content = params["content"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("缺少 content 参数"))?;
 
         if let Some(parent) = std::path::Path::new(file_path).parent() {
@@ -89,8 +105,12 @@ pub struct EditTool;
 
 #[async_trait::async_trait]
 impl Tool for EditTool {
-    fn name(&self) -> &str { "edit" }
-    fn description(&self) -> &str { "精确字符串替换——在文件中查找 old_string 并替换为 new_string" }
+    fn name(&self) -> &str {
+        "edit"
+    }
+    fn description(&self) -> &str {
+        "精确字符串替换——在文件中查找 old_string 并替换为 new_string"
+    }
 
     fn parameters(&self) -> serde_json::Value {
         serde_json::json!({
@@ -104,14 +124,19 @@ impl Tool for EditTool {
         })
     }
 
-    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel { RiskLevel::Write }
+    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel {
+        RiskLevel::Write
+    }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<ToolOutput> {
-        let file_path = params["file_path"].as_str()
+        let file_path = params["file_path"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("缺少 file_path 参数"))?;
-        let old_string = params["old_string"].as_str()
+        let old_string = params["old_string"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("缺少 old_string 参数"))?;
-        let new_string = params["new_string"].as_str()
+        let new_string = params["new_string"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("缺少 new_string 参数"))?;
 
         if old_string == new_string {
@@ -129,7 +154,10 @@ impl Tool for EditTool {
             anyhow::bail!("未找到匹配的文本: {}", old_string);
         }
         if count > 1 {
-            anyhow::bail!("找到 {} 处匹配，old_string 必须唯一。请在 old_string 前后添加更多上下文。", count);
+            anyhow::bail!(
+                "找到 {} 处匹配，old_string 必须唯一。请在 old_string 前后添加更多上下文。",
+                count
+            );
         }
 
         let edited = content.replacen(old_string, new_string, 1);

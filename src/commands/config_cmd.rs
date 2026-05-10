@@ -4,11 +4,21 @@ pub struct ConfigCommand;
 
 #[async_trait::async_trait]
 impl Command for ConfigCommand {
-    fn name(&self) -> &str { "config" }
-    fn description(&self) -> &str { "查看/修改配置" }
-    fn usage(&self) -> &str { "/config [model <name>|reload]" }
+    fn name(&self) -> &str {
+        "config"
+    }
+    fn description(&self) -> &str {
+        "查看/修改配置"
+    }
+    fn usage(&self) -> &str {
+        "/config [model <name>|reload]"
+    }
 
-    async fn execute(&self, args: &[String], ctx: &mut CommandContext<'_>) -> anyhow::Result<CommandOutput> {
+    async fn execute(
+        &self,
+        args: &[String],
+        ctx: &mut CommandContext<'_>,
+    ) -> anyhow::Result<CommandOutput> {
         match args.first().map(|s| s.as_str()) {
             Some("model") => {
                 if let Some(model) = args.get(1) {
@@ -50,12 +60,20 @@ impl Command for ConfigCommand {
 mod tests {
     use super::*;
 
-    fn make_ctx() -> (crate::session::SessionManager, crate::config::ConfigManager, String, bool) {
+    fn make_ctx() -> (
+        crate::session::SessionManager,
+        crate::config::ConfigManager,
+        String,
+        bool,
+    ) {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let config = crate::config::ConfigManager::load(
-            home.path().to_path_buf(), project.path().to_path_buf(), None,
-        ).unwrap();
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         let session = crate::session::SessionManager::new("test".into());
         (session, config, "default".into(), false)
     }
@@ -65,11 +83,20 @@ mod tests {
     async fn test_config_shows_summary() {
         let (mut session, mut config, mut model, mut should_quit) = make_ctx();
         let cmd = ConfigCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => {
                 assert!(message.contains("max_tokens"));
@@ -84,11 +111,20 @@ mod tests {
     async fn test_config_model_switches() {
         let (mut session, mut config, mut model, mut should_quit) = make_ctx();
         let cmd = ConfigCommand;
-        let result = cmd.execute(&["model".into(), "claude-opus".into()], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &["model".into(), "claude-opus".into()],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(model, "claude-opus");
         assert_eq!(config.settings.model, "claude-opus");
         assert!(matches!(result, CommandOutput::Success { .. }));
@@ -99,11 +135,20 @@ mod tests {
     async fn test_config_reload() {
         let (mut session, mut config, mut model, mut should_quit) = make_ctx();
         let cmd = ConfigCommand;
-        let result = cmd.execute(&["reload".into()], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &["reload".into()],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         assert!(matches!(result, CommandOutput::Success { .. }));
     }
 }

@@ -21,10 +21,22 @@ fn test_project_overrides_user_skill() {
     let user_dir = TempDir::new().unwrap();
     let project_dir = TempDir::new().unwrap();
 
-    fs::write(user_dir.path().join("style.md"), "---\nname: style\ndescription: user style\n---\nuser").unwrap();
-    fs::write(project_dir.path().join("style.md"), "---\nname: style\ndescription: project style\n---\nproject").unwrap();
+    fs::write(
+        user_dir.path().join("style.md"),
+        "---\nname: style\ndescription: user style\n---\nuser",
+    )
+    .unwrap();
+    fs::write(
+        project_dir.path().join("style.md"),
+        "---\nname: style\ndescription: project style\n---\nproject",
+    )
+    .unwrap();
 
-    let registry = SkillRegistry::load(Some(user_dir.path().to_path_buf()), Some(project_dir.path().to_path_buf())).unwrap();
+    let registry = SkillRegistry::load(
+        Some(user_dir.path().to_path_buf()),
+        Some(project_dir.path().to_path_buf()),
+    )
+    .unwrap();
     let metas = registry.list();
     assert_eq!(metas.len(), 1);
     assert_eq!(metas[0].source, SkillSource::Project);
@@ -42,7 +54,11 @@ fn test_load_nonexistent_dir() {
 #[test]
 fn test_format_for_prompt() {
     let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("ts.md"), "---\nname: typescript\ndescription: TS expert\n---\nbody").unwrap();
+    fs::write(
+        dir.path().join("ts.md"),
+        "---\nname: typescript\ndescription: TS expert\n---\nbody",
+    )
+    .unwrap();
 
     let registry = SkillRegistry::load(Some(dir.path().to_path_buf()), None).unwrap();
     let text = registry.format_available_for_prompt();
@@ -55,7 +71,11 @@ fn test_format_for_prompt() {
 #[test]
 fn test_load_full_content_through_public_api() {
     let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("my-skill.md"), "---\nname: my-skill\ndescription: desc\n---\n\nActual skill body here.\n").unwrap();
+    fs::write(
+        dir.path().join("my-skill.md"),
+        "---\nname: my-skill\ndescription: desc\n---\n\nActual skill body here.\n",
+    )
+    .unwrap();
 
     let registry = SkillRegistry::load(Some(dir.path().to_path_buf()), None).unwrap();
     let content = registry.load_full_content("my-skill").unwrap();
@@ -66,7 +86,11 @@ fn test_load_full_content_through_public_api() {
 #[test]
 fn test_fuzzy_match_public_api() {
     let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("rust-analyzer.md"), "---\nname: rust-analyzer\ndescription: RA\n---\nbody").unwrap();
+    fs::write(
+        dir.path().join("rust-analyzer.md"),
+        "---\nname: rust-analyzer\ndescription: RA\n---\nbody",
+    )
+    .unwrap();
 
     let registry = SkillRegistry::load(Some(dir.path().to_path_buf()), None).unwrap();
     assert!(registry.fuzzy_match("rust-analyzer").is_some()); // exact

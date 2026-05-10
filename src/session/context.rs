@@ -1,5 +1,5 @@
-use crate::llm::{ChatMessage, Content, Role, ToolDefinition};
 use super::Session;
+use crate::llm::{ChatMessage, Content, Role, ToolDefinition};
 
 /// ContextBuilder — 构建发送给 LLM 的上下文
 pub struct ContextBuilder;
@@ -25,7 +25,10 @@ impl ContextBuilder {
 
         // 2. 添加 AGENTS.md 项目指令
         if let Some(instructions) = project_instructions {
-            system_text.push_str(&format!("\n\n<project_instructions>\n{}\n</project_instructions>", instructions));
+            system_text.push_str(&format!(
+                "\n\n<project_instructions>\n{}\n</project_instructions>",
+                instructions
+            ));
         }
 
         // 3. 添加可用 Skill 列表（轻量元信息，对齐设计 §8）
@@ -49,7 +52,8 @@ impl ContextBuilder {
         messages.push(ChatMessage {
             role: Role::System,
             content: Content::Text(system_text),
-            name: None, tool_call_id: None,
+            name: None,
+            tool_call_id: None,
         });
 
         // 5. 注入 Active Skills 的完整内容
@@ -57,7 +61,8 @@ impl ContextBuilder {
             messages.push(ChatMessage {
                 role: Role::System,
                 content: Content::Text(skill_content.clone()),
-                name: Some("skill".into()), tool_call_id: None,
+                name: Some("skill".into()),
+                tool_call_id: None,
             });
         }
 
@@ -65,8 +70,12 @@ impl ContextBuilder {
         if let Some(ref summary) = session.summary {
             messages.push(ChatMessage {
                 role: Role::System,
-                content: Content::Text(format!("<conversation_summary>\n{}\n</conversation_summary>", summary)),
-                name: Some("summary".into()), tool_call_id: None,
+                content: Content::Text(format!(
+                    "<conversation_summary>\n{}\n</conversation_summary>",
+                    summary
+                )),
+                name: Some("summary".into()),
+                tool_call_id: None,
             });
         }
 
@@ -82,14 +91,18 @@ impl ContextBuilder {
 
     /// 估算 total token count
     pub fn estimated_tokens(messages: &[ChatMessage]) -> u32 {
-        let char_count: usize = messages.iter()
+        let char_count: usize = messages
+            .iter()
             .map(|m| match &m.content {
                 Content::Text(t) => t.len(),
-                Content::Parts(parts) => parts.iter().map(|p| match p {
-                    crate::llm::ContentPart::Text { text } => text.len(),
-                    crate::llm::ContentPart::ToolUse { input, .. } => input.to_string().len(),
-                    crate::llm::ContentPart::ToolResult { content, .. } => content.len(),
-                }).sum(),
+                Content::Parts(parts) => parts
+                    .iter()
+                    .map(|p| match p {
+                        crate::llm::ContentPart::Text { text } => text.len(),
+                        crate::llm::ContentPart::ToolUse { input, .. } => input.to_string().len(),
+                        crate::llm::ContentPart::ToolResult { content, .. } => content.len(),
+                    })
+                    .sum(),
             })
             .sum();
         (char_count as f32 * 0.25) as u32
@@ -101,7 +114,10 @@ impl ContextBuilder {
             return;
         }
 
-        let old_turns: Vec<_> = session.turns.drain(..session.turns.len() - keep_recent).collect();
+        let old_turns: Vec<_> = session
+            .turns
+            .drain(..session.turns.len() - keep_recent)
+            .collect();
 
         let summary = super::summarizer::Summarizer::summarize_turns(&old_turns, 0);
         session.summary = Some(summary);
@@ -111,19 +127,18 @@ impl ContextBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::Session;
     use crate::llm::{ChatMessage, Content, Role};
+    use crate::session::Session;
 
     /// Verifies that estimated_tokens returns a positive value and reasonable upper bound for a short message.
     #[test]
     fn test_estimated_tokens() {
-        let msgs = vec![
-            ChatMessage {
-                role: Role::User,
-                content: Content::Text("hello world".into()),
-                name: None, tool_call_id: None,
-            },
-        ];
+        let msgs = vec![ChatMessage {
+            role: Role::User,
+            content: Content::Text("hello world".into()),
+            name: None,
+            tool_call_id: None,
+        }];
         let tokens = ContextBuilder::estimated_tokens(&msgs);
         assert!(tokens > 0);
         assert!(tokens < 50);
@@ -153,9 +168,11 @@ mod tests {
     fn test_compact_noop_within_limit() {
         let mut session = Session::new("test".into());
         session.turns.push(crate::session::Turn {
-            id: "t0".into(), messages: vec![],
+            id: "t0".into(),
+            messages: vec![],
             status: crate::session::TurnStatus::Completed,
-            started_at: chrono::Utc::now(), completed_at: None,
+            started_at: chrono::Utc::now(),
+            completed_at: None,
             usage: Default::default(),
         });
         ContextBuilder::compact(&mut session, 5);
@@ -168,7 +185,11 @@ mod tests {
     fn test_build_with_project_instructions() {
         let session = Session::new("test".into());
         let msgs = ContextBuilder::build(
-            &session, "be helpful", &[], "", &[],
+            &session,
+            "be helpful",
+            &[],
+            "",
+            &[],
             Some("# Project Rules\n- use tabs"),
         );
         let system = msgs.first().unwrap();
@@ -202,7 +223,10 @@ mod tests {
         let session = Session::new("test".into());
         let skills = vec!["skill body".to_string()];
         let msgs = ContextBuilder::build(&session, "be helpful", &[], "", &skills, None);
-        let skill_msg = msgs.iter().find(|m| m.name.as_deref() == Some("skill")).unwrap();
+        let skill_msg = msgs
+            .iter()
+            .find(|m| m.name.as_deref() == Some("skill"))
+            .unwrap();
         if let Content::Text(ref t) = skill_msg.content {
             assert_eq!(t, "skill body");
         }
@@ -214,7 +238,10 @@ mod tests {
         let mut session = Session::new("test".into());
         session.summary = Some("previous context".into());
         let msgs = ContextBuilder::build(&session, "be helpful", &[], "", &[], None);
-        let summary_msg = msgs.iter().find(|m| m.name.as_deref() == Some("summary")).unwrap();
+        let summary_msg = msgs
+            .iter()
+            .find(|m| m.name.as_deref() == Some("summary"))
+            .unwrap();
         if let Content::Text(ref t) = summary_msg.content {
             assert!(t.contains("<conversation_summary>"));
             assert!(t.contains("previous context"));

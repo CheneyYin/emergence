@@ -50,7 +50,9 @@ pub struct Suggestion {
 #[async_trait::async_trait]
 pub trait Command: Send + Sync {
     fn name(&self) -> &str;
-    fn aliases(&self) -> &[&str] { &[] }
+    fn aliases(&self) -> &[&str] {
+        &[]
+    }
     fn description(&self) -> &str;
     fn usage(&self) -> &str;
     async fn execute(
@@ -94,7 +96,9 @@ impl CommandRegistry {
         let parts: Vec<&str> = trimmed.split_whitespace().collect();
 
         if parts.is_empty() {
-            return Ok(CommandOutput::Error { message: "空命令".into() });
+            return Ok(CommandOutput::Error {
+                message: "空命令".into(),
+            });
         }
 
         let name = parts[0];
@@ -115,7 +119,8 @@ impl CommandRegistry {
         // 模糊匹配
         let suggestions = self.fuzzy_find(name);
         if !suggestions.is_empty() {
-            let hint = suggestions.iter()
+            let hint = suggestions
+                .iter()
                 .map(|s| format!("→ /{} ({})", s.name, s.distance))
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -131,12 +136,16 @@ impl CommandRegistry {
 
     /// 模糊匹配（Levenshtein 距离 ≤ 3）
     pub fn fuzzy_find(&self, input: &str) -> Vec<Suggestion> {
-        let mut suggestions: Vec<Suggestion> = self.known_names
+        let mut suggestions: Vec<Suggestion> = self
+            .known_names
             .iter()
             .filter_map(|name| {
                 let distance = crate::utils::fuzzy::levenshtein_distance(input, name);
                 if distance <= 3 {
-                    Some(Suggestion { name: name.clone(), distance })
+                    Some(Suggestion {
+                        name: name.clone(),
+                        distance,
+                    })
                 } else {
                     None
                 }
@@ -191,12 +200,26 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Command for TestCommand {
-        fn name(&self) -> &str { "test" }
-        fn aliases(&self) -> &[&str] { &["t"] }
-        fn description(&self) -> &str { "测试命令" }
-        fn usage(&self) -> &str { "/test" }
-        async fn execute(&self, _args: &[String], _ctx: &mut CommandContext<'_>) -> anyhow::Result<CommandOutput> {
-            Ok(CommandOutput::Success { message: "ok".into() })
+        fn name(&self) -> &str {
+            "test"
+        }
+        fn aliases(&self) -> &[&str] {
+            &["t"]
+        }
+        fn description(&self) -> &str {
+            "测试命令"
+        }
+        fn usage(&self) -> &str {
+            "/test"
+        }
+        async fn execute(
+            &self,
+            _args: &[String],
+            _ctx: &mut CommandContext<'_>,
+        ) -> anyhow::Result<CommandOutput> {
+            Ok(CommandOutput::Success {
+                message: "ok".into(),
+            })
         }
     }
 

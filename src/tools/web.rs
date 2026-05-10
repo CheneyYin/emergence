@@ -5,8 +5,12 @@ pub struct WebFetchTool;
 
 #[async_trait::async_trait]
 impl Tool for WebFetchTool {
-    fn name(&self) -> &str { "web_fetch" }
-    fn description(&self) -> &str { "发起 HTTP GET 请求，提取页面内容（转为 markdown）" }
+    fn name(&self) -> &str {
+        "web_fetch"
+    }
+    fn description(&self) -> &str {
+        "发起 HTTP GET 请求，提取页面内容（转为 markdown）"
+    }
 
     fn parameters(&self) -> serde_json::Value {
         serde_json::json!({
@@ -25,10 +29,13 @@ impl Tool for WebFetchTool {
         })
     }
 
-    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel { RiskLevel::System }
+    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel {
+        RiskLevel::System
+    }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<ToolOutput> {
-        let url = params["url"].as_str()
+        let url = params["url"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("缺少 url 参数"))?;
 
         let client = reqwest::Client::builder()
@@ -36,7 +43,10 @@ impl Tool for WebFetchTool {
             .user_agent("emergence/0.1.0")
             .build()?;
 
-        let response = client.get(url).send().await
+        let response = client
+            .get(url)
+            .send()
+            .await
             .map_err(|e| anyhow::anyhow!("HTTP 请求失败: {}", e))?;
 
         let status = response.status();
@@ -46,9 +56,14 @@ impl Tool for WebFetchTool {
         let text = strip_html_tags(&body);
 
         Ok(ToolOutput {
-            content: format!("状态码: {}\n\n{}",
+            content: format!(
+                "状态码: {}\n\n{}",
                 status,
-                if text.len() > 10000 { format!("{}...(截断)", &text[..10000]) } else { text }
+                if text.len() > 10000 {
+                    format!("{}...(截断)", &text[..10000])
+                } else {
+                    text
+                }
             ),
             metadata: Some(serde_json::json!({
                 "status_code": status.as_u16(),
@@ -61,8 +76,11 @@ impl Tool for WebFetchTool {
 fn strip_html_tags(html: &str) -> String {
     let re = regex::Regex::new(r"<[^>]*>").unwrap();
     let text = re.replace_all(html, "");
-    let text = text.replace("&nbsp;", " ").replace("&amp;", "&")
-        .replace("&lt;", "<").replace("&gt;", ">")
+    let text = text
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
         .replace("&quot;", "\"");
     // 合并多余空白
     let re_ws = regex::Regex::new(r"\n\s*\n").unwrap();
@@ -73,8 +91,12 @@ pub struct WebSearchTool;
 
 #[async_trait::async_trait]
 impl Tool for WebSearchTool {
-    fn name(&self) -> &str { "web_search" }
-    fn description(&self) -> &str { "调用搜索 API 返回搜索结果" }
+    fn name(&self) -> &str {
+        "web_search"
+    }
+    fn description(&self) -> &str {
+        "调用搜索 API 返回搜索结果"
+    }
 
     fn parameters(&self) -> serde_json::Value {
         serde_json::json!({
@@ -86,10 +108,13 @@ impl Tool for WebSearchTool {
         })
     }
 
-    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel { RiskLevel::System }
+    fn risk_level(&self, _params: &serde_json::Value) -> RiskLevel {
+        RiskLevel::System
+    }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<ToolOutput> {
-        let query = params["query"].as_str()
+        let query = params["query"]
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("缺少 query 参数"))?;
 
         // v1: 使用 DuckDuckGo HTML 重定向（无需 API key）
@@ -109,7 +134,11 @@ impl Tool for WebSearchTool {
         let results = extract_search_results(&body);
 
         Ok(ToolOutput {
-            content: if results.is_empty() { "未找到结果".into() } else { results.join("\n\n") },
+            content: if results.is_empty() {
+                "未找到结果".into()
+            } else {
+                results.join("\n\n")
+            },
             metadata: Some(serde_json::json!({"result_count": results.len()})),
         })
     }
@@ -118,7 +147,9 @@ impl Tool for WebSearchTool {
 fn extract_search_results(html: &str) -> Vec<String> {
     let mut results = Vec::new();
     // 简单解析 DuckDuckGo HTML 结果
-    let re_link = regex::Regex::new(r#"<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)</a>"#).unwrap();
+    let re_link =
+        regex::Regex::new(r#"<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)</a>"#)
+            .unwrap();
 
     for cap in re_link.captures_iter(html).take(10) {
         let url = html_escape::decode_html_entities(&cap[1]).to_string();
@@ -167,7 +198,10 @@ mod tests {
         let tool = WebFetchTool;
         assert_eq!(tool.name(), "web_fetch");
         let params = tool.parameters();
-        assert!(params["required"].as_array().unwrap().contains(&serde_json::json!("url")));
+        assert!(params["required"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("url")));
     }
 
     /// Verifies that WebSearchTool returns the correct name and declares "query" as a required parameter.
@@ -176,7 +210,10 @@ mod tests {
         let tool = WebSearchTool;
         assert_eq!(tool.name(), "web_search");
         let params = tool.parameters();
-        assert!(params["required"].as_array().unwrap().contains(&serde_json::json!("query")));
+        assert!(params["required"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("query")));
     }
 
     /// Verifies that strip_html_tags correctly decodes HTML entities into their character equivalents.

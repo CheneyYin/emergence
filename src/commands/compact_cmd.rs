@@ -4,11 +4,21 @@ pub struct CompactCommand;
 
 #[async_trait::async_trait]
 impl Command for CompactCommand {
-    fn name(&self) -> &str { "compact" }
-    fn description(&self) -> &str { "手动触发上下文压缩" }
-    fn usage(&self) -> &str { "/compact [/compact status]" }
+    fn name(&self) -> &str {
+        "compact"
+    }
+    fn description(&self) -> &str {
+        "手动触发上下文压缩"
+    }
+    fn usage(&self) -> &str {
+        "/compact [/compact status]"
+    }
 
-    async fn execute(&self, args: &[String], ctx: &mut CommandContext<'_>) -> anyhow::Result<CommandOutput> {
+    async fn execute(
+        &self,
+        args: &[String],
+        ctx: &mut CommandContext<'_>,
+    ) -> anyhow::Result<CommandOutput> {
         if args.first().map(|s| s.as_str()) == Some("status") {
             let tokens = ctx.session.estimated_tokens();
             let threshold = ctx.config.settings.session.compaction_threshold_tokens;
@@ -18,7 +28,11 @@ impl Command for CompactCommand {
                     "当前 token 用量: ~{} / {} (阈值 80%)\n状态: {}",
                     tokens,
                     threshold,
-                    if should { "需要压缩" } else { "不需要压缩" }
+                    if should {
+                        "需要压缩"
+                    } else {
+                        "不需要压缩"
+                    }
                 ),
             });
         }
@@ -27,7 +41,10 @@ impl Command for CompactCommand {
         if ctx.session.should_compact(threshold) {
             ctx.session.compact(3);
             Ok(CommandOutput::Success {
-                message: format!("压缩完成。当前 token 用量: ~{}", ctx.session.estimated_tokens()),
+                message: format!(
+                    "压缩完成。当前 token 用量: ~{}",
+                    ctx.session.estimated_tokens()
+                ),
             })
         } else {
             Ok(CommandOutput::Success {
@@ -41,12 +58,20 @@ impl Command for CompactCommand {
 mod tests {
     use super::*;
 
-    fn make_ctx() -> (crate::session::SessionManager, crate::config::ConfigManager, String, bool) {
+    fn make_ctx() -> (
+        crate::session::SessionManager,
+        crate::config::ConfigManager,
+        String,
+        bool,
+    ) {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let config = crate::config::ConfigManager::load(
-            home.path().to_path_buf(), project.path().to_path_buf(), None,
-        ).unwrap();
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         let session = crate::session::SessionManager::new("test".into());
         (session, config, "default".into(), false)
     }
@@ -56,11 +81,20 @@ mod tests {
     async fn test_compact_status() {
         let (mut session, mut config, mut model, mut should_quit) = make_ctx();
         let cmd = CompactCommand;
-        let result = cmd.execute(&["status".into()], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &["status".into()],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => {
                 assert!(message.contains("token 用量"));
@@ -74,11 +108,20 @@ mod tests {
     async fn test_compact_empty_session() {
         let (mut session, mut config, mut model, mut should_quit) = make_ctx();
         let cmd = CompactCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => assert!(message.contains("无需压缩")),
             other => panic!("expected Success, got {:?}", other),

@@ -1,7 +1,7 @@
-use ratatui::prelude::*;
-use ratatui::widgets::*;
 use super::PermissionDialogState;
 use crate::permissions::RiskLevel;
+use ratatui::prelude::*;
+use ratatui::widgets::*;
 
 pub fn render_permission_dialog(f: &mut Frame, state: &PermissionDialogState) {
     let area = centered_rect(60, 40, f.area());

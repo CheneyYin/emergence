@@ -1,6 +1,6 @@
+use crate::llm::{ChatMessage, Usage};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::llm::{ChatMessage, Usage};
 
 pub mod context;
 pub mod store;
@@ -137,7 +137,10 @@ impl SessionManager {
 
     /// 向当前 Turn 追加消息
     pub fn push(&mut self, message: ChatMessage) -> anyhow::Result<()> {
-        let turn = self.session.turns.last_mut()
+        let turn = self
+            .session
+            .turns
+            .last_mut()
             .ok_or_else(|| anyhow::anyhow!("没有进行中的 turn"))?;
         turn.messages.push(message);
         self.session.updated_at = Utc::now();
@@ -146,7 +149,10 @@ impl SessionManager {
 
     /// 完成当前 Turn
     pub fn complete_turn(&mut self) -> anyhow::Result<()> {
-        let turn = self.session.turns.last_mut()
+        let turn = self
+            .session
+            .turns
+            .last_mut()
             .ok_or_else(|| anyhow::anyhow!("没有进行中的 turn"))?;
         turn.status = TurnStatus::Completed;
         turn.completed_at = Some(Utc::now());
@@ -175,11 +181,15 @@ impl SessionManager {
 
     /// 估算上下文 token 数（粗略：每字符 0.25 tokens）
     pub fn estimated_tokens(&self) -> u32 {
-        let char_count: usize = self.session.turns.iter()
+        let char_count: usize = self
+            .session
+            .turns
+            .iter()
             .flat_map(|t| t.messages.iter())
             .map(|m| match &m.content {
                 crate::llm::Content::Text(t) => t.len(),
-                crate::llm::Content::Parts(parts) => parts.iter()
+                crate::llm::Content::Parts(parts) => parts
+                    .iter()
                     .map(|p| match p {
                         crate::llm::ContentPart::Text { text } => text.len(),
                         crate::llm::ContentPart::ToolUse { input, .. } => input.to_string().len(),
@@ -234,13 +244,14 @@ impl SessionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm::{Role, Content};
+    use crate::llm::{Content, Role};
 
     fn make_user_msg(text: &str) -> ChatMessage {
         ChatMessage {
             role: Role::User,
             content: Content::Text(text.to_string()),
-            name: None, tool_call_id: None,
+            name: None,
+            tool_call_id: None,
         }
     }
 
@@ -275,7 +286,9 @@ mod tests {
 
         let ctx = sm.build_context("You are helpful. Be concise.", &[], "", &[], None);
         assert_eq!(ctx.first().unwrap().role, Role::System);
-        assert!(ctx.iter().any(|m| matches!(&m.content, Content::Text(t) if t == "hello")));
+        assert!(ctx
+            .iter()
+            .any(|m| matches!(&m.content, Content::Text(t) if t == "hello")));
     }
 
     /// Verifies that estimated_tokens() returns a positive count for non-empty conversation turns.

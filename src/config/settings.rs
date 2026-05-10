@@ -67,7 +67,9 @@ pub struct SessionSettings {
 }
 
 // 默认值函数
-fn default_version() -> u32 { 1 }
+fn default_version() -> u32 {
+    1
+}
 fn default_model() -> String {
     "deepseek/deepseek-v4-pro".to_string()
 }

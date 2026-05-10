@@ -172,9 +172,12 @@ mod tests {
     fn test_load_with_defaults() {
         let home = home_dir();
         let project = project_dir();
-        let cm =
-            ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-                .unwrap();
+        let cm = ConfigManager::load(
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         assert_eq!(cm.settings.model, "deepseek/deepseek-v4-pro");
         assert_eq!(cm.settings.generation.max_tokens, 32000);
     }
@@ -198,9 +201,12 @@ mod tests {
     fn test_reload_is_ok() {
         let home = home_dir();
         let project = project_dir();
-        let mut cm =
-            ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-                .unwrap();
+        let mut cm = ConfigManager::load(
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         assert!(cm.reload().is_ok());
     }
 
@@ -209,9 +215,12 @@ mod tests {
     fn test_session_store_dir_expands_tilde() {
         let home = home_dir();
         let project = project_dir();
-        let cm =
-            ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-                .unwrap();
+        let cm = ConfigManager::load(
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         let dir = cm.session_store_dir();
         assert!(!dir.to_string_lossy().starts_with('~'));
     }
@@ -221,9 +230,12 @@ mod tests {
     fn test_generation_config_conversion() {
         let home = home_dir();
         let project = project_dir();
-        let cm =
-            ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-                .unwrap();
+        let cm = ConfigManager::load(
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         let gc = cm.generation_config();
         assert_eq!(gc.max_tokens, 32000);
         assert_eq!(gc.temperature, 0.7);
@@ -245,9 +257,12 @@ mod tests {
         )
         .unwrap();
 
-        let cm =
-            ConfigManager::load(home.path().to_path_buf(), project.path().to_path_buf(), None)
-                .unwrap();
+        let cm = ConfigManager::load(
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         assert_eq!(cm.settings.model, "custom-model");
         assert_eq!(cm.settings.version, 5);
     }

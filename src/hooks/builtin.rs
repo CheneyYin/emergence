@@ -2,7 +2,10 @@ use super::*;
 use std::sync::Mutex;
 
 /// 创建内建监听器
-pub fn create_builtin(listener: &str, config: serde_json::Value) -> anyhow::Result<Box<dyn HookExecutor>> {
+pub fn create_builtin(
+    listener: &str,
+    config: serde_json::Value,
+) -> anyhow::Result<Box<dyn HookExecutor>> {
     match listener {
         "log" => Ok(Box::new(LogListener::new(config)?)),
         "validate-tool" => Ok(Box::new(ValidateToolListener::new(config)?)),
@@ -34,7 +37,9 @@ impl LogListener {
 
 #[async_trait]
 impl HookExecutor for LogListener {
-    fn hook_type(&self) -> &str { "builtin:log" }
+    fn hook_type(&self) -> &str {
+        "builtin:log"
+    }
 
     async fn execute(&self, event: &HookEvent) -> anyhow::Result<HookOutcome> {
         let log_entry = serde_json::json!({
@@ -86,13 +91,13 @@ impl ValidateToolListener {
 
 #[async_trait]
 impl HookExecutor for ValidateToolListener {
-    fn hook_type(&self) -> &str { "builtin:validate-tool" }
+    fn hook_type(&self) -> &str {
+        "builtin:validate-tool"
+    }
 
     async fn execute(&self, event: &HookEvent) -> anyhow::Result<HookOutcome> {
         let params = match event {
-            HookEvent::PreToolExecute { params, .. } => {
-                params["command"].as_str().unwrap_or("")
-            }
+            HookEvent::PreToolExecute { params, .. } => params["command"].as_str().unwrap_or(""),
             _ => "",
         };
 
@@ -112,12 +117,16 @@ impl HookExecutor for ValidateToolListener {
 pub struct NotifyListener;
 
 impl NotifyListener {
-    fn new(_config: serde_json::Value) -> anyhow::Result<Self> { Ok(Self) }
+    fn new(_config: serde_json::Value) -> anyhow::Result<Self> {
+        Ok(Self)
+    }
 }
 
 #[async_trait]
 impl HookExecutor for NotifyListener {
-    fn hook_type(&self) -> &str { "builtin:notify" }
+    fn hook_type(&self) -> &str {
+        "builtin:notify"
+    }
 
     async fn execute(&self, event: &HookEvent) -> anyhow::Result<HookOutcome> {
         let message = format!("emergence: {:?}", event.event_type());
@@ -138,13 +147,18 @@ pub struct RateLimitListener {
 impl RateLimitListener {
     fn new(config: serde_json::Value) -> anyhow::Result<Self> {
         let max_per_hour = config["max_per_hour"].as_u64().unwrap_or(50) as u32;
-        Ok(Self { limits: Mutex::new(std::collections::HashMap::new()), max_per_hour })
+        Ok(Self {
+            limits: Mutex::new(std::collections::HashMap::new()),
+            max_per_hour,
+        })
     }
 }
 
 #[async_trait]
 impl HookExecutor for RateLimitListener {
-    fn hook_type(&self) -> &str { "builtin:rate-limit" }
+    fn hook_type(&self) -> &str {
+        "builtin:rate-limit"
+    }
 
     async fn execute(&self, _event: &HookEvent) -> anyhow::Result<HookOutcome> {
         let now = std::time::Instant::now();

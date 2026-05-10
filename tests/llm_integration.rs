@@ -39,8 +39,16 @@ fn make_adapter() -> OpenAIAdapter {
         "https://api.example.com/v1".into(),
         "sk-test-key".into(),
         vec![
-            ModelInfo { id: "gpt-4".into(), name: "GPT-4".into(), max_tokens: 8192 },
-            ModelInfo { id: "gpt-3.5".into(), name: "GPT-3.5".into(), max_tokens: 4096 },
+            ModelInfo {
+                id: "gpt-4".into(),
+                name: "GPT-4".into(),
+                max_tokens: 8192,
+            },
+            ModelInfo {
+                id: "gpt-3.5".into(),
+                name: "GPT-3.5".into(),
+                max_tokens: 4096,
+            },
         ],
     )
 }
@@ -115,19 +123,35 @@ fn test_registry_with_real_adapter() {
 fn test_registry_multiple_adapters() {
     let mut registry = ProviderRegistry::new();
     let adapter_a = OpenAIAdapter::new(
-        "https://api.a.com/v1".into(), "key-a".into(),
-        vec![ModelInfo { id: "model-a".into(), name: "A".into(), max_tokens: 100 }],
+        "https://api.a.com/v1".into(),
+        "key-a".into(),
+        vec![ModelInfo {
+            id: "model-a".into(),
+            name: "A".into(),
+            max_tokens: 100,
+        }],
     );
     let adapter_b = OpenAIAdapter::new(
-        "https://api.b.com/v1".into(), "key-b".into(),
-        vec![ModelInfo { id: "model-b".into(), name: "B".into(), max_tokens: 200 }],
+        "https://api.b.com/v1".into(),
+        "key-b".into(),
+        vec![ModelInfo {
+            id: "model-b".into(),
+            name: "B".into(),
+            max_tokens: 200,
+        }],
     );
     registry.register("provider-a".into(), Box::new(adapter_a));
     registry.register("provider-b".into(), Box::new(adapter_b));
 
     assert_eq!(registry.list_providers(), vec!["provider-a", "provider-b"]);
-    assert_eq!(registry.get("provider-a").unwrap().models()[0].id, "model-a");
-    assert_eq!(registry.get("provider-b").unwrap().models()[0].id, "model-b");
+    assert_eq!(
+        registry.get("provider-a").unwrap().models()[0].id,
+        "model-a"
+    );
+    assert_eq!(
+        registry.get("provider-b").unwrap().models()[0].id,
+        "model-b"
+    );
 }
 
 // ── StreamEvent enumeration ──
@@ -144,7 +168,10 @@ fn test_stream_event_variants() {
     };
     let finish = StreamEvent::Finish {
         stop_reason: StopReason::EndTurn,
-        usage: Usage { input_tokens: 10, output_tokens: 5 },
+        usage: Usage {
+            input_tokens: 10,
+            output_tokens: 5,
+        },
     };
 
     // Verify Debug formatting doesn't panic

@@ -4,11 +4,21 @@ pub struct SkillsCommand;
 
 #[async_trait::async_trait]
 impl Command for SkillsCommand {
-    fn name(&self) -> &str { "skills" }
-    fn description(&self) -> &str { "列出可用 skill" }
-    fn usage(&self) -> &str { "/skills" }
+    fn name(&self) -> &str {
+        "skills"
+    }
+    fn description(&self) -> &str {
+        "列出可用 skill"
+    }
+    fn usage(&self) -> &str {
+        "/skills"
+    }
 
-    async fn execute(&self, _args: &[String], ctx: &mut CommandContext<'_>) -> anyhow::Result<CommandOutput> {
+    async fn execute(
+        &self,
+        _args: &[String],
+        ctx: &mut CommandContext<'_>,
+    ) -> anyhow::Result<CommandOutput> {
         if let Some(sr) = ctx.skill_registry {
             let skills = sr.list();
             if skills.is_empty() {
@@ -22,11 +32,16 @@ impl Command for SkillsCommand {
                     crate::skills::SkillSource::User => "[user]",
                     crate::skills::SkillSource::Project => "[project]",
                 };
-                msg.push_str(&format!("  {} {} | {}\n", meta.name, source, meta.description));
+                msg.push_str(&format!(
+                    "  {} {} | {}\n",
+                    meta.name, source, meta.description
+                ));
             }
             Ok(CommandOutput::Success { message: msg })
         } else {
-            Ok(CommandOutput::Error { message: "SkillRegistry 不可用".into() })
+            Ok(CommandOutput::Error {
+                message: "SkillRegistry 不可用".into(),
+            })
         }
     }
 }
@@ -35,11 +50,21 @@ pub struct SkillCommand;
 
 #[async_trait::async_trait]
 impl Command for SkillCommand {
-    fn name(&self) -> &str { "skill" }
-    fn description(&self) -> &str { "激活/停用 skill" }
-    fn usage(&self) -> &str { "/skill <name> 或 /skill --off <name>" }
+    fn name(&self) -> &str {
+        "skill"
+    }
+    fn description(&self) -> &str {
+        "激活/停用 skill"
+    }
+    fn usage(&self) -> &str {
+        "/skill <name> 或 /skill --off <name>"
+    }
 
-    async fn execute(&self, args: &[String], ctx: &mut CommandContext<'_>) -> anyhow::Result<CommandOutput> {
+    async fn execute(
+        &self,
+        args: &[String],
+        ctx: &mut CommandContext<'_>,
+    ) -> anyhow::Result<CommandOutput> {
         if args.first().map(|s| s.as_str()) == Some("--off") {
             if let Some(name) = args.get(1) {
                 ctx.session.deactivate_skill(name)?;
@@ -68,7 +93,9 @@ impl Command for SkillCommand {
             let active = ctx.session.active_skills();
             if active.is_empty() {
                 Ok(CommandOutput::Success {
-                    message: "当前无激活的 skill。使用 /skills 查看可用 skill，/skill <name> 激活。".into(),
+                    message:
+                        "当前无激活的 skill。使用 /skills 查看可用 skill，/skill <name> 激活。"
+                            .into(),
                 })
             } else {
                 Ok(CommandOutput::Success {
@@ -86,14 +113,29 @@ mod tests {
 
     fn make_ctx(
         sr: Option<crate::skills::SkillRegistry>,
-    ) -> (crate::session::SessionManager, crate::config::ConfigManager, String, bool, crate::skills::SkillRegistry) {
+    ) -> (
+        crate::session::SessionManager,
+        crate::config::ConfigManager,
+        String,
+        bool,
+        crate::skills::SkillRegistry,
+    ) {
         let home = TempDir::new().unwrap();
         let project = TempDir::new().unwrap();
         let config = crate::config::ConfigManager::load(
-            home.path().to_path_buf(), project.path().to_path_buf(), None,
-        ).unwrap();
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         let session = crate::session::SessionManager::new("test".into());
-        (session, config, "default".into(), false, sr.unwrap_or_else(crate::skills::SkillRegistry::new))
+        (
+            session,
+            config,
+            "default".into(),
+            false,
+            sr.unwrap_or_else(crate::skills::SkillRegistry::new),
+        )
     }
 
     /// Verifies that SkillsCommand returns Error when no SkillRegistry is provided.
@@ -103,17 +145,29 @@ mod tests {
             let home = TempDir::new().unwrap();
             let project = TempDir::new().unwrap();
             let config = crate::config::ConfigManager::load(
-                home.path().to_path_buf(), project.path().to_path_buf(), None,
-            ).unwrap();
+                home.path().to_path_buf(),
+                project.path().to_path_buf(),
+                None,
+            )
+            .unwrap();
             let session = crate::session::SessionManager::new("test".into());
             (session, config, "default".into(), false)
         };
         let cmd = SkillsCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         assert!(matches!(result, CommandOutput::Error { .. }));
     }
 
@@ -122,11 +176,20 @@ mod tests {
     async fn test_skills_empty_registry() {
         let (mut session, mut config, mut model, mut should_quit, sr) = make_ctx(None);
         let cmd = SkillsCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: Some(&sr), session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: Some(&sr),
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => assert!(message.contains("暂无可用 skill")),
             other => panic!("expected Success, got {:?}", other),
@@ -139,11 +202,20 @@ mod tests {
         let (mut session, mut config, mut model, mut should_quit, _sr) = make_ctx(None);
 
         let cmd = SkillCommand;
-        let result = cmd.execute(&["rust".into()], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &["rust".into()],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => assert!(message.contains("已激活")),
             other => panic!("expected Success, got {:?}", other),
@@ -159,11 +231,20 @@ mod tests {
 
         let cmd = SkillCommand;
         let args = vec!["--off".into(), "rust".into()];
-        let result = cmd.execute(&args, &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &args,
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => assert!(message.contains("已停用")),
             other => panic!("expected Success, got {:?}", other),
@@ -178,11 +259,20 @@ mod tests {
         session.activate_skill("typescript").unwrap();
 
         let cmd = SkillCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => {
                 assert!(message.contains("typescript"));
@@ -198,11 +288,20 @@ mod tests {
         let (mut session, mut config, mut model, mut should_quit, _sr) = make_ctx(None);
 
         let cmd = SkillCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => assert!(message.contains("当前无激活")),
             other => panic!("expected Success, got {:?}", other),

@@ -1,6 +1,6 @@
-use emergence::protocol::{Action, Event};
-use emergence::permissions::RiskLevel;
 use emergence::llm::StopReason;
+use emergence::permissions::RiskLevel;
+use emergence::protocol::{Action, Event};
 
 /// Verifies that Action variants can be sent through a channel.
 #[tokio::test]
@@ -23,13 +23,23 @@ async fn test_action_channel_roundtrip() {
 async fn test_event_channel_roundtrip() {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
 
-    tx.send(Event::TextDelta { content: "hi".into(), finish_reason: None }).unwrap();
+    tx.send(Event::TextDelta {
+        content: "hi".into(),
+        finish_reason: None,
+    })
+    .unwrap();
     assert!(matches!(rx.recv().await.unwrap(), Event::TextDelta { .. }));
 
-    tx.send(Event::Error { message: "oops".into() }).unwrap();
+    tx.send(Event::Error {
+        message: "oops".into(),
+    })
+    .unwrap();
     assert!(matches!(rx.recv().await.unwrap(), Event::Error { .. }));
 
-    tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn }).unwrap();
+    tx.send(Event::AgentDone {
+        stop_reason: StopReason::EndTurn,
+    })
+    .unwrap();
     assert!(matches!(rx.recv().await.unwrap(), Event::AgentDone { .. }));
 }
 
@@ -40,8 +50,17 @@ async fn test_basic_lifecycle_channel_flow() {
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
 
     // Simulate: user submits → agent responds with TextDelta → AgentDone
-    event_tx.send(Event::TextDelta { content: "response".into(), finish_reason: None }).unwrap();
-    event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn }).unwrap();
+    event_tx
+        .send(Event::TextDelta {
+            content: "response".into(),
+            finish_reason: None,
+        })
+        .unwrap();
+    event_tx
+        .send(Event::AgentDone {
+            stop_reason: StopReason::EndTurn,
+        })
+        .unwrap();
     drop(event_tx);
 
     let first = event_rx.recv().await.unwrap();
@@ -65,10 +84,16 @@ async fn test_tool_request_result_pair() {
         name: "write".into(),
         params: params.clone(),
         risk: RiskLevel::Write,
-    }).unwrap();
+    })
+    .unwrap();
 
     match rx.recv().await.unwrap() {
-        Event::ToolRequest { id, name, params: p, risk } => {
+        Event::ToolRequest {
+            id,
+            name,
+            params: p,
+            risk,
+        } => {
             assert_eq!(id, "tc_1");
             assert_eq!(name, "write");
             assert_eq!(p, params);

@@ -30,7 +30,9 @@ pub enum Content {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPart {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     ToolUse {
         id: String,
         name: String,
@@ -88,7 +90,9 @@ pub struct GenerationConfig {
     pub tools: Option<Vec<ToolDefinition>>,
 }
 
-fn default_top_p() -> f64 { 1.0 }
+fn default_top_p() -> f64 {
+    1.0
+}
 
 #[cfg(test)]
 mod tests {
@@ -101,17 +105,32 @@ mod tests {
     fn test_role_serialize_lowercase() {
         assert_eq!(serde_json::to_string(&Role::System).unwrap(), r#""system""#);
         assert_eq!(serde_json::to_string(&Role::User).unwrap(), r#""user""#);
-        assert_eq!(serde_json::to_string(&Role::Assistant).unwrap(), r#""assistant""#);
+        assert_eq!(
+            serde_json::to_string(&Role::Assistant).unwrap(),
+            r#""assistant""#
+        );
         assert_eq!(serde_json::to_string(&Role::Tool).unwrap(), r#""tool""#);
     }
 
     /// Verifies that JSON deserialization of lowercase role strings correctly produces each Role variant.
     #[test]
     fn test_role_deserialize() {
-        assert_eq!(serde_json::from_str::<Role>(r#""system""#).unwrap(), Role::System);
-        assert_eq!(serde_json::from_str::<Role>(r#""user""#).unwrap(), Role::User);
-        assert_eq!(serde_json::from_str::<Role>(r#""assistant""#).unwrap(), Role::Assistant);
-        assert_eq!(serde_json::from_str::<Role>(r#""tool""#).unwrap(), Role::Tool);
+        assert_eq!(
+            serde_json::from_str::<Role>(r#""system""#).unwrap(),
+            Role::System
+        );
+        assert_eq!(
+            serde_json::from_str::<Role>(r#""user""#).unwrap(),
+            Role::User
+        );
+        assert_eq!(
+            serde_json::from_str::<Role>(r#""assistant""#).unwrap(),
+            Role::Assistant
+        );
+        assert_eq!(
+            serde_json::from_str::<Role>(r#""tool""#).unwrap(),
+            Role::Tool
+        );
     }
 
     // ── ChatMessage ──
@@ -163,9 +182,7 @@ mod tests {
     /// Verifies that Content::Parts serializes as a JSON array with typed elements.
     #[test]
     fn test_content_parts_serialize_as_array() {
-        let content = Content::Parts(vec![
-            ContentPart::Text { text: "hi".into() },
-        ]);
+        let content = Content::Parts(vec![ContentPart::Text { text: "hi".into() }]);
         let json = serde_json::to_string(&content).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(parsed.is_array());
@@ -243,19 +260,43 @@ mod tests {
     /// Verifies that all StopReason variants serialize to their expected snake_case representation.
     #[test]
     fn test_stop_reason_snake_case() {
-        assert_eq!(serde_json::to_string(&StopReason::EndTurn).unwrap(), r#""end_turn""#);
-        assert_eq!(serde_json::to_string(&StopReason::MaxTokens).unwrap(), r#""max_tokens""#);
-        assert_eq!(serde_json::to_string(&StopReason::ToolUse).unwrap(), r#""tool_use""#);
-        assert_eq!(serde_json::to_string(&StopReason::StopSequence).unwrap(), r#""stop_sequence""#);
+        assert_eq!(
+            serde_json::to_string(&StopReason::EndTurn).unwrap(),
+            r#""end_turn""#
+        );
+        assert_eq!(
+            serde_json::to_string(&StopReason::MaxTokens).unwrap(),
+            r#""max_tokens""#
+        );
+        assert_eq!(
+            serde_json::to_string(&StopReason::ToolUse).unwrap(),
+            r#""tool_use""#
+        );
+        assert_eq!(
+            serde_json::to_string(&StopReason::StopSequence).unwrap(),
+            r#""stop_sequence""#
+        );
     }
 
     /// Verifies that snake_case JSON strings deserialize into the correct StopReason variant.
     #[test]
     fn test_stop_reason_deserialize() {
-        assert_eq!(serde_json::from_str::<StopReason>(r#""end_turn""#).unwrap(), StopReason::EndTurn);
-        assert_eq!(serde_json::from_str::<StopReason>(r#""max_tokens""#).unwrap(), StopReason::MaxTokens);
-        assert_eq!(serde_json::from_str::<StopReason>(r#""tool_use""#).unwrap(), StopReason::ToolUse);
-        assert_eq!(serde_json::from_str::<StopReason>(r#""stop_sequence""#).unwrap(), StopReason::StopSequence);
+        assert_eq!(
+            serde_json::from_str::<StopReason>(r#""end_turn""#).unwrap(),
+            StopReason::EndTurn
+        );
+        assert_eq!(
+            serde_json::from_str::<StopReason>(r#""max_tokens""#).unwrap(),
+            StopReason::MaxTokens
+        );
+        assert_eq!(
+            serde_json::from_str::<StopReason>(r#""tool_use""#).unwrap(),
+            StopReason::ToolUse
+        );
+        assert_eq!(
+            serde_json::from_str::<StopReason>(r#""stop_sequence""#).unwrap(),
+            StopReason::StopSequence
+        );
     }
 
     // ── Usage ──
@@ -271,7 +312,10 @@ mod tests {
     /// Verifies that Usage serializes `input_tokens` and `output_tokens` correctly.
     #[test]
     fn test_usage_serialize() {
-        let usage = Usage { input_tokens: 10, output_tokens: 5 };
+        let usage = Usage {
+            input_tokens: 10,
+            output_tokens: 5,
+        };
         let json = serde_json::to_string(&usage).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["input_tokens"], 10);
@@ -306,7 +350,10 @@ mod tests {
     /// Verifies that the thinking budget is serialized when `thinking` is set to Some.
     #[test]
     fn test_generation_config_with_thinking() {
-        let config = GenerationConfig { thinking: Some(16000), ..config() };
+        let config = GenerationConfig {
+            thinking: Some(16000),
+            ..config()
+        };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["thinking"], 16000);
@@ -382,12 +429,15 @@ mod tests {
     fn test_chat_message_deserialize_with_optional_fields() {
         let json = r#"{"role":"tool","content":"result","name":"read","tool_call_id":"tc_1"}"#;
         let msg: ChatMessage = serde_json::from_str(json).unwrap();
-        assert_eq!(msg, ChatMessage {
-            role: Role::Tool,
-            content: Content::Text("result".into()),
-            name: Some("read".into()),
-            tool_call_id: Some("tc_1".into()),
-        });
+        assert_eq!(
+            msg,
+            ChatMessage {
+                role: Role::Tool,
+                content: Content::Text("result".into()),
+                name: Some("read".into()),
+                tool_call_id: Some("tc_1".into()),
+            }
+        );
     }
 
     /// Verifies that a ChatMessage with Content::Parts survives a full serialize-deserialize roundtrip unchanged.
@@ -397,7 +447,11 @@ mod tests {
             role: Role::Assistant,
             content: Content::Parts(vec![
                 ContentPart::Text { text: "hi".into() },
-                ContentPart::ToolUse { id: "t1".into(), name: "read".into(), input: serde_json::json!({}) },
+                ContentPart::ToolUse {
+                    id: "t1".into(),
+                    name: "read".into(),
+                    input: serde_json::json!({}),
+                },
             ]),
             name: None,
             tool_call_id: None,
@@ -412,11 +466,14 @@ mod tests {
     fn test_content_part_tool_use_deserialize() {
         let json = r#"{"type":"tool_use","id":"t1","name":"read","input":{"path":"/x"}}"#;
         let part: ContentPart = serde_json::from_str(json).unwrap();
-        assert_eq!(part, ContentPart::ToolUse {
-            id: "t1".into(),
-            name: "read".into(),
-            input: serde_json::json!({"path": "/x"}),
-        });
+        assert_eq!(
+            part,
+            ContentPart::ToolUse {
+                id: "t1".into(),
+                name: "read".into(),
+                input: serde_json::json!({"path": "/x"}),
+            }
+        );
     }
 
     /// Verifies that a tool_result JSON object deserializes into ContentPart::ToolResult with `is_error` defaulting to None.
@@ -424,11 +481,14 @@ mod tests {
     fn test_content_part_tool_result_deserialize() {
         let json = r#"{"type":"tool_result","tool_use_id":"t1","content":"done"}"#;
         let part: ContentPart = serde_json::from_str(json).unwrap();
-        assert_eq!(part, ContentPart::ToolResult {
-            tool_use_id: "t1".into(),
-            content: "done".into(),
-            is_error: None,
-        });
+        assert_eq!(
+            part,
+            ContentPart::ToolResult {
+                tool_use_id: "t1".into(),
+                content: "done".into(),
+                is_error: None,
+            }
+        );
     }
 
     /// Verifies that a text-type JSON content part correctly deserializes into ContentPart::Text.
@@ -436,7 +496,12 @@ mod tests {
     fn test_content_part_text_deserialize() {
         let json = r#"{"type":"text","text":"hello"}"#;
         let part: ContentPart = serde_json::from_str(json).unwrap();
-        assert_eq!(part, ContentPart::Text { text: "hello".into() });
+        assert_eq!(
+            part,
+            ContentPart::Text {
+                text: "hello".into()
+            }
+        );
     }
 
     /// Verifies that ModelInfo serializes `id`, `name`, and `max_tokens` correctly.
@@ -476,7 +541,8 @@ mod tests {
     /// Verifies that GenerationConfig deserializes with tool definitions present in the JSON.
     #[test]
     fn test_generation_config_deserialize_with_tools() {
-        let json = r#"{"max_tokens":200,"tools":[{"name":"read","description":"desc","parameters":{}}]}"#;
+        let json =
+            r#"{"max_tokens":200,"tools":[{"name":"read","description":"desc","parameters":{}}]}"#;
         let config: GenerationConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.max_tokens, 200);
         assert!(config.tools.is_some());

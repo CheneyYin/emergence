@@ -23,8 +23,8 @@ pub fn load_user_agents_md(home_dir: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     /// Verifies that load_agents_md returns Some(content) when AGENTS.md exists.
     #[test]

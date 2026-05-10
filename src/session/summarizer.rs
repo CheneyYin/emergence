@@ -19,12 +19,18 @@ impl Summarizer {
                 match msg.role {
                     crate::llm::Role::User => {
                         if let crate::llm::Content::Text(ref t) = msg.content {
-                            summary.push_str(&format!("用户: {} | ", t.chars().take(100).collect::<String>()));
+                            summary.push_str(&format!(
+                                "用户: {} | ",
+                                t.chars().take(100).collect::<String>()
+                            ));
                         }
                     }
                     crate::llm::Role::Assistant => {
                         if let crate::llm::Content::Text(ref t) = msg.content {
-                            summary.push_str(&format!("助手: {} | ", t.chars().take(200).collect::<String>()));
+                            summary.push_str(&format!(
+                                "助手: {} | ",
+                                t.chars().take(200).collect::<String>()
+                            ));
                         }
                     }
                     _ => {}
@@ -40,24 +46,36 @@ impl Summarizer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::Turn;
     use crate::llm::{ChatMessage, Content, Role};
+    use crate::session::Turn;
     use chrono::Utc;
 
     /// Verifies that summarize_turns includes old turns and excludes recent ones.
     #[test]
     fn test_summarize_turns() {
-        let turns: Vec<Turn> = (1..=5).map(|i| Turn {
-            id: format!("turn-{}", i),
-            messages: vec![
-                ChatMessage { role: Role::User, content: Content::Text(format!("question {}", i)), name: None, tool_call_id: None },
-                ChatMessage { role: Role::Assistant, content: Content::Text(format!("answer {}", i)), name: None, tool_call_id: None },
-            ],
-            status: crate::session::TurnStatus::Completed,
-            started_at: Utc::now(),
-            completed_at: Some(Utc::now()),
-            usage: Default::default(),
-        }).collect();
+        let turns: Vec<Turn> = (1..=5)
+            .map(|i| Turn {
+                id: format!("turn-{}", i),
+                messages: vec![
+                    ChatMessage {
+                        role: Role::User,
+                        content: Content::Text(format!("question {}", i)),
+                        name: None,
+                        tool_call_id: None,
+                    },
+                    ChatMessage {
+                        role: Role::Assistant,
+                        content: Content::Text(format!("answer {}", i)),
+                        name: None,
+                        tool_call_id: None,
+                    },
+                ],
+                status: crate::session::TurnStatus::Completed,
+                started_at: Utc::now(),
+                completed_at: Some(Utc::now()),
+                usage: Default::default(),
+            })
+            .collect();
 
         let summary = Summarizer::summarize_turns(&turns, 3);
         assert!(summary.contains("turn-1"));
@@ -68,14 +86,16 @@ mod tests {
     /// Verifies that summarize_turns returns empty string when all turns are within keep range.
     #[test]
     fn test_summarize_all_recent_returns_empty() {
-        let turns: Vec<Turn> = (1..=2).map(|i| Turn {
-            id: format!("turn-{}", i),
-            messages: vec![],
-            status: crate::session::TurnStatus::Completed,
-            started_at: Utc::now(),
-            completed_at: Some(Utc::now()),
-            usage: Default::default(),
-        }).collect();
+        let turns: Vec<Turn> = (1..=2)
+            .map(|i| Turn {
+                id: format!("turn-{}", i),
+                messages: vec![],
+                status: crate::session::TurnStatus::Completed,
+                started_at: Utc::now(),
+                completed_at: Some(Utc::now()),
+                usage: Default::default(),
+            })
+            .collect();
 
         let summary = Summarizer::summarize_turns(&turns, 3);
         assert!(summary.is_empty());
@@ -89,8 +109,18 @@ mod tests {
         let turns = vec![Turn {
             id: "turn-1".into(),
             messages: vec![
-                ChatMessage { role: Role::User, content: Content::Text(long_user), name: None, tool_call_id: None },
-                ChatMessage { role: Role::Assistant, content: Content::Text(long_asst), name: None, tool_call_id: None },
+                ChatMessage {
+                    role: Role::User,
+                    content: Content::Text(long_user),
+                    name: None,
+                    tool_call_id: None,
+                },
+                ChatMessage {
+                    role: Role::Assistant,
+                    content: Content::Text(long_asst),
+                    name: None,
+                    tool_call_id: None,
+                },
             ],
             status: crate::session::TurnStatus::Completed,
             started_at: Utc::now(),

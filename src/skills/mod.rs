@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 pub mod loader;
 
@@ -39,7 +39,9 @@ pub struct SkillRegistry {
 
 impl SkillRegistry {
     pub fn new() -> Self {
-        Self { skills: HashMap::new() }
+        Self {
+            skills: HashMap::new(),
+        }
     }
 
     /// 扫描两级目录加载 skill meta
@@ -107,7 +109,8 @@ impl SkillRegistry {
             }
             None => {
                 // 无 frontmatter：用文件名作为 name
-                let name = path.file_stem()
+                let name = path
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("unknown")
                     .to_string();
@@ -129,7 +132,10 @@ impl SkillRegistry {
         }
         let mut text = String::from("<available_skills>\n");
         for (_, meta) in &self.skills {
-            text.push_str(&format!("- skill: {} | desc: {}\n", meta.name, meta.description));
+            text.push_str(&format!(
+                "- skill: {} | desc: {}\n",
+                meta.name, meta.description
+            ));
         }
         text.push_str("</available_skills>");
         text
@@ -137,7 +143,9 @@ impl SkillRegistry {
 
     /// 按需加载完整 content（去掉 frontmatter）
     pub fn load_full_content(&self, name: &str) -> anyhow::Result<String> {
-        let meta = self.skills.get(name)
+        let meta = self
+            .skills
+            .get(name)
             .ok_or_else(|| anyhow::anyhow!("skill 不存在: {}", name))?;
 
         let content = std::fs::read_to_string(&meta.file_path)?;
@@ -197,7 +205,9 @@ mod tests {
         write!(tmp, "---\nname: rust-expert\ndescription: Rust systems expert\nallowed-tools: [read, write]\n---\n\n## Role\nYou are a Rust expert.\n").unwrap();
 
         let registry = SkillRegistry::new();
-        let meta = registry.parse_frontmatter(&tmp.path().to_path_buf(), SkillSource::User).unwrap();
+        let meta = registry
+            .parse_frontmatter(&tmp.path().to_path_buf(), SkillSource::User)
+            .unwrap();
         assert_eq!(meta.name, "rust-expert");
         assert_eq!(meta.description, "Rust systems expert");
         assert_eq!(meta.allowed_tools, vec!["read", "write"]);
@@ -208,10 +218,16 @@ mod tests {
     fn test_load_full_content_strips_frontmatter() {
         let dir = tempfile::tempdir().unwrap();
         let skill_path = dir.path().join("test-skill.md");
-        std::fs::write(&skill_path, "---\nname: test-skill\ndescription: test\n---\n\nThis is the body.\n").unwrap();
+        std::fs::write(
+            &skill_path,
+            "---\nname: test-skill\ndescription: test\n---\n\nThis is the body.\n",
+        )
+        .unwrap();
 
         let mut registry = SkillRegistry::new();
-        registry.scan_dir(&dir.path().to_path_buf(), SkillSource::User).unwrap();
+        registry
+            .scan_dir(&dir.path().to_path_buf(), SkillSource::User)
+            .unwrap();
         let content = registry.load_full_content("test-skill").unwrap();
         assert_eq!(content, "This is the body.");
     }
@@ -232,7 +248,9 @@ mod tests {
         std::fs::write(&skill_path, "Just some markdown, no frontmatter.\n").unwrap();
 
         let registry = SkillRegistry::new();
-        let meta = registry.parse_frontmatter(&skill_path.to_path_buf(), SkillSource::User).unwrap();
+        let meta = registry
+            .parse_frontmatter(&skill_path.to_path_buf(), SkillSource::User)
+            .unwrap();
         assert_eq!(meta.name, "my-skill");
         assert!(meta.description.is_empty());
         assert!(meta.allowed_tools.is_empty());
@@ -243,10 +261,16 @@ mod tests {
     fn test_scan_dir_ignores_non_md_files() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("notes.txt"), "not a skill").unwrap();
-        std::fs::write(dir.path().join("skill.md"), "---\nname: skill-1\ndescription: desc\n---\nbody").unwrap();
+        std::fs::write(
+            dir.path().join("skill.md"),
+            "---\nname: skill-1\ndescription: desc\n---\nbody",
+        )
+        .unwrap();
 
         let mut registry = SkillRegistry::new();
-        registry.scan_dir(&dir.path().to_path_buf(), SkillSource::User).unwrap();
+        registry
+            .scan_dir(&dir.path().to_path_buf(), SkillSource::User)
+            .unwrap();
         assert_eq!(registry.list().len(), 1);
         assert_eq!(registry.list()[0].name, "skill-1");
     }
@@ -271,10 +295,16 @@ mod tests {
     #[test]
     fn test_format_available_with_skills() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("rust.md"), "---\nname: rust\ndescription: Rust expert\n---\nbody").unwrap();
+        std::fs::write(
+            dir.path().join("rust.md"),
+            "---\nname: rust\ndescription: Rust expert\n---\nbody",
+        )
+        .unwrap();
 
         let mut registry = SkillRegistry::new();
-        registry.scan_dir(&dir.path().to_path_buf(), SkillSource::User).unwrap();
+        registry
+            .scan_dir(&dir.path().to_path_buf(), SkillSource::User)
+            .unwrap();
         let text = registry.format_available_for_prompt();
         assert!(text.contains("<available_skills>"));
         assert!(text.contains("rust"));
@@ -286,10 +316,16 @@ mod tests {
     #[test]
     fn test_fuzzy_match_variants() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("typescript.md"), "---\nname: typescript\ndescription: TS\n---\nbody").unwrap();
+        std::fs::write(
+            dir.path().join("typescript.md"),
+            "---\nname: typescript\ndescription: TS\n---\nbody",
+        )
+        .unwrap();
 
         let mut registry = SkillRegistry::new();
-        registry.scan_dir(&dir.path().to_path_buf(), SkillSource::User).unwrap();
+        registry
+            .scan_dir(&dir.path().to_path_buf(), SkillSource::User)
+            .unwrap();
 
         // exact match
         assert!(registry.fuzzy_match("typescript").is_some());
@@ -307,14 +343,27 @@ mod tests {
         let user_dir = tempfile::tempdir().unwrap();
         let project_dir = tempfile::tempdir().unwrap();
 
-        std::fs::write(user_dir.path().join("shared.md"), "---\nname: shared\ndescription: user version\n---\nuser body").unwrap();
-        std::fs::write(user_dir.path().join("user-only.md"), "---\nname: user-only\ndescription: only user\n---\nbody").unwrap();
-        std::fs::write(project_dir.path().join("shared.md"), "---\nname: shared\ndescription: project version\n---\nproject body").unwrap();
+        std::fs::write(
+            user_dir.path().join("shared.md"),
+            "---\nname: shared\ndescription: user version\n---\nuser body",
+        )
+        .unwrap();
+        std::fs::write(
+            user_dir.path().join("user-only.md"),
+            "---\nname: user-only\ndescription: only user\n---\nbody",
+        )
+        .unwrap();
+        std::fs::write(
+            project_dir.path().join("shared.md"),
+            "---\nname: shared\ndescription: project version\n---\nproject body",
+        )
+        .unwrap();
 
         let registry = SkillRegistry::load(
             Some(user_dir.path().to_path_buf()),
             Some(project_dir.path().to_path_buf()),
-        ).unwrap();
+        )
+        .unwrap();
 
         let metas = registry.list();
         assert_eq!(metas.len(), 2); // shared (project override) + user-only

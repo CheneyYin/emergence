@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use super::SkillRegistry;
+use std::path::PathBuf;
 
 impl SkillRegistry {
     /// 创建默认 loader：扫描 ~/.emergence/skills/ 和 ./.emergence/skills/

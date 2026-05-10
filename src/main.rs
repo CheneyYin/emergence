@@ -24,5 +24,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     tracing::info!("emergence v0.1.0 启动");
 
-    emergence::app::App::new(cli.session, cli.model)?.run().await
+    emergence::app::App::new(cli.session, cli.model)?
+        .run()
+        .await
 }

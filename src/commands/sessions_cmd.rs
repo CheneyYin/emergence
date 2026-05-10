@@ -5,13 +5,26 @@ pub struct SessionsCommand;
 
 #[async_trait::async_trait]
 impl Command for SessionsCommand {
-    fn name(&self) -> &str { "sessions" }
-    fn aliases(&self) -> &[&str] { &["s"] }
-    fn description(&self) -> &str { "列出、切换、删除、别名管理会话" }
-    fn usage(&self) -> &str { "/sessions [list|load <id|alias>|delete <id|alias>|alias <name>]" }
+    fn name(&self) -> &str {
+        "sessions"
+    }
+    fn aliases(&self) -> &[&str] {
+        &["s"]
+    }
+    fn description(&self) -> &str {
+        "列出、切换、删除、别名管理会话"
+    }
+    fn usage(&self) -> &str {
+        "/sessions [list|load <id|alias>|delete <id|alias>|alias <name>]"
+    }
 
-    async fn execute(&self, args: &[String], ctx: &mut CommandContext<'_>) -> anyhow::Result<CommandOutput> {
-        let store = ctx.session_store
+    async fn execute(
+        &self,
+        args: &[String],
+        ctx: &mut CommandContext<'_>,
+    ) -> anyhow::Result<CommandOutput> {
+        let store = ctx
+            .session_store
             .ok_or_else(|| anyhow::anyhow!("SessionStore 不可用"))?;
 
         match args.first().map(|s| s.as_str()) {
@@ -24,12 +37,19 @@ impl Command for SessionsCommand {
                 }
                 let mut msg = format!("会话列表 ({} 个):\n\n", metas.len());
                 for meta in &metas {
-                    let current = if meta.id == ctx.session.session().id { " ← 当前" } else { "" };
+                    let current = if meta.id == ctx.session.session().id {
+                        " ← 当前"
+                    } else {
+                        ""
+                    };
                     let alias = meta.alias.as_deref().unwrap_or("-");
                     msg.push_str(&format!(
                         "  {} | 别名: {} | {} 条消息 | {}{}\n",
-                        meta.id, alias, meta.message_count,
-                        meta.updated_at.format("%Y-%m-%d %H:%M"), current,
+                        meta.id,
+                        alias,
+                        meta.message_count,
+                        meta.updated_at.format("%Y-%m-%d %H:%M"),
+                        current,
                     ));
                 }
                 msg.push_str("\n使用 /sessions load <id|别名> 切换会话");
@@ -86,7 +106,8 @@ impl Command for SessionsCommand {
                 }
             }
             _ => Ok(CommandOutput::Error {
-                message: "用法: /sessions [list|load <id|alias>|delete <id|alias>|alias <name>]".into(),
+                message: "用法: /sessions [list|load <id|alias>|delete <id|alias>|alias <name>]"
+                    .into(),
             }),
         }
     }
@@ -101,12 +122,21 @@ mod tests {
 
     fn make_ctx(
         store: JsonFileStore,
-    ) -> (crate::session::SessionManager, crate::config::ConfigManager, String, bool, JsonFileStore) {
+    ) -> (
+        crate::session::SessionManager,
+        crate::config::ConfigManager,
+        String,
+        bool,
+        JsonFileStore,
+    ) {
         let home = TempDir::new().unwrap();
         let project = TempDir::new().unwrap();
         let config = crate::config::ConfigManager::load(
-            home.path().to_path_buf(), project.path().to_path_buf(), None,
-        ).unwrap();
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         let session = crate::session::SessionManager::new("test-sess".into());
         (session, config, "default".into(), false, store)
     }
@@ -118,17 +148,28 @@ mod tests {
             let home = TempDir::new().unwrap();
             let project = TempDir::new().unwrap();
             let config = crate::config::ConfigManager::load(
-                home.path().to_path_buf(), project.path().to_path_buf(), None,
-            ).unwrap();
+                home.path().to_path_buf(),
+                project.path().to_path_buf(),
+                None,
+            )
+            .unwrap();
             let session = crate::session::SessionManager::new("test".into());
             (session, config, "default".into(), false)
         };
         let cmd = SessionsCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: None,
-        }).await;
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: None,
+                },
+            )
+            .await;
         assert!(result.is_err());
     }
 
@@ -140,11 +181,20 @@ mod tests {
         let (mut session, mut config, mut model, mut should_quit, store) = make_ctx(store);
 
         let cmd = SessionsCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: Some(&store),
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: Some(&store),
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => assert!(message.contains("没有保存的会话")),
             other => panic!("expected Success, got {:?}", other),
@@ -161,11 +211,20 @@ mod tests {
         let (mut session, mut config, mut model, mut should_quit, store) = make_ctx(store);
 
         let cmd = SessionsCommand;
-        let result = cmd.execute(&[], &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: Some(&store),
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &[],
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: Some(&store),
+                },
+            )
+            .await
+            .unwrap();
         match result {
             CommandOutput::Success { message } => {
                 assert!(message.contains("sess-1"));
@@ -180,21 +239,36 @@ mod tests {
     async fn test_sessions_delete() {
         let dir = TempDir::new().unwrap();
         let store = JsonFileStore::new(dir.path().to_path_buf());
-        store.save(&Session::new("1-to-delete".into())).await.unwrap();
+        store
+            .save(&Session::new("1-to-delete".into()))
+            .await
+            .unwrap();
 
         let (mut session, mut config, mut model, mut should_quit, store) = make_ctx(store);
 
         let cmd = SessionsCommand;
         let args = vec!["delete".into(), "1-to-delete".into()];
-        let result = cmd.execute(&args, &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: Some(&store),
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &args,
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: Some(&store),
+                },
+            )
+            .await
+            .unwrap();
         assert!(matches!(result, CommandOutput::Success { .. }));
 
         // Verify it's gone
-        let loaded = store.load(&SessionKey::Id("1-to-delete".into())).await.unwrap();
+        let loaded = store
+            .load(&SessionKey::Id("1-to-delete".into()))
+            .await
+            .unwrap();
         assert!(loaded.is_none());
     }
 
@@ -209,15 +283,27 @@ mod tests {
 
         let cmd = SessionsCommand;
         let args = vec!["alias".into(), "quick-name".into()];
-        let result = cmd.execute(&args, &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: Some(&store),
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &args,
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: Some(&store),
+                },
+            )
+            .await
+            .unwrap();
         assert!(matches!(result, CommandOutput::Success { .. }));
 
         // Verify alias was set
-        let loaded = store.load(&SessionKey::Alias("quick-name".into())).await.unwrap();
+        let loaded = store
+            .load(&SessionKey::Alias("quick-name".into()))
+            .await
+            .unwrap();
         assert!(loaded.is_some());
     }
 
@@ -234,11 +320,20 @@ mod tests {
         let cmd = SessionsCommand;
         // Non-digit key is resolved as alias
         let args = vec!["load".into(), "my-alias".into()];
-        let result = cmd.execute(&args, &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: Some(&store),
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &args,
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: Some(&store),
+                },
+            )
+            .await
+            .unwrap();
         assert!(matches!(result, CommandOutput::SwitchSession { .. }));
     }
 
@@ -252,11 +347,20 @@ mod tests {
 
         let cmd = SessionsCommand;
         let args = vec!["invalid".into()];
-        let result = cmd.execute(&args, &mut CommandContext {
-            config: &mut config, session: &mut session,
-            model: &mut model, should_quit: &mut should_quit,
-            skill_registry: None, session_store: Some(&store),
-        }).await.unwrap();
+        let result = cmd
+            .execute(
+                &args,
+                &mut CommandContext {
+                    config: &mut config,
+                    session: &mut session,
+                    model: &mut model,
+                    should_quit: &mut should_quit,
+                    skill_registry: None,
+                    session_store: Some(&store),
+                },
+            )
+            .await
+            .unwrap();
         assert!(matches!(result, CommandOutput::Error { .. }));
     }
 }

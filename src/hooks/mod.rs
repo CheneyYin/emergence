@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use async_trait::async_trait;
 use crate::permissions::RiskLevel;
+use async_trait::async_trait;
+use std::collections::HashMap;
 
-pub mod shell;
 pub mod builtin;
+pub mod shell;
 
 /// Hook 事件类型（无 payload，用于注册/查找 — HashMap key）
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -23,12 +23,28 @@ pub enum HookEventType {
 pub enum HookEvent {
     SessionStart,
     SessionEnd,
-    PreToolExecute { tool: String, params: serde_json::Value },
-    PostToolExecute { tool: String, result: crate::tools::ToolOutput },
-    UserInput { text: String },
-    PreLLMCall { messages: Vec<crate::llm::ChatMessage> },
-    PostLLMCall { response: String, usage: crate::llm::Usage },
-    PermissionRequested { tool: String, risk: RiskLevel },
+    PreToolExecute {
+        tool: String,
+        params: serde_json::Value,
+    },
+    PostToolExecute {
+        tool: String,
+        result: crate::tools::ToolOutput,
+    },
+    UserInput {
+        text: String,
+    },
+    PreLLMCall {
+        messages: Vec<crate::llm::ChatMessage>,
+    },
+    PostLLMCall {
+        response: String,
+        usage: crate::llm::Usage,
+    },
+    PermissionRequested {
+        tool: String,
+        risk: RiskLevel,
+    },
 }
 
 impl HookEvent {
@@ -71,7 +87,9 @@ pub enum HookConfig {
     },
 }
 
-fn default_timeout() -> u64 { 30000 }
+fn default_timeout() -> u64 {
+    30000
+}
 
 /// Hook 条目
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -95,7 +113,9 @@ pub struct HookRegistry {
 
 impl HookRegistry {
     pub fn new() -> Self {
-        Self { listeners: HashMap::new() }
+        Self {
+            listeners: HashMap::new(),
+        }
     }
 
     /// 从 hooks.json 加载注册
@@ -113,13 +133,15 @@ impl HookRegistry {
                 let entry: HookEntry = serde_json::from_value(hook.clone())?;
                 let event_type = parse_event_type(&entry.event);
                 let executor: Box<dyn HookExecutor> = match &entry.config {
-                    HookConfig::Shell { command, timeout_ms, abort_on_error } => {
-                        Box::new(shell::ShellExecutor::new(
-                            command.clone(),
-                            *timeout_ms,
-                            *abort_on_error,
-                        ))
-                    }
+                    HookConfig::Shell {
+                        command,
+                        timeout_ms,
+                        abort_on_error,
+                    } => Box::new(shell::ShellExecutor::new(
+                        command.clone(),
+                        *timeout_ms,
+                        *abort_on_error,
+                    )),
                     HookConfig::Builtin { listener, config } => {
                         builtin::create_builtin(listener, config.clone())?
                     }
@@ -142,7 +164,10 @@ impl HookRegistry {
     /// 合并另一个 HookRegistry 的内容（用于两级配置合并）
     pub fn merge(&mut self, other: HookRegistry) {
         for (event_type, executors) in other.listeners {
-            self.listeners.entry(event_type).or_default().extend(executors);
+            self.listeners
+                .entry(event_type)
+                .or_default()
+                .extend(executors);
         }
     }
 
@@ -203,8 +228,16 @@ mod tests {
     /// Verifies that all 8 event types are recognized by parse_event_type.
     #[test]
     fn test_parse_all_event_types() {
-        let valid = ["SessionStart", "SessionEnd", "PreToolExecute", "PostToolExecute",
-                     "UserInput", "PreLLMCall", "PostLLMCall", "PermissionRequested"];
+        let valid = [
+            "SessionStart",
+            "SessionEnd",
+            "PreToolExecute",
+            "PostToolExecute",
+            "UserInput",
+            "PreLLMCall",
+            "PostLLMCall",
+            "PermissionRequested",
+        ];
         for name in valid {
             assert!(parse_event_type(name).is_some(), "should parse {}", name);
         }
@@ -216,7 +249,9 @@ mod tests {
         struct StubExecutor;
         #[async_trait]
         impl HookExecutor for StubExecutor {
-            fn hook_type(&self) -> &str { "stub" }
+            fn hook_type(&self) -> &str {
+                "stub"
+            }
             async fn execute(&self, _: &HookEvent) -> anyhow::Result<HookOutcome> {
                 Ok(HookOutcome::Continue)
             }
@@ -235,7 +270,9 @@ mod tests {
         struct StubA;
         #[async_trait]
         impl HookExecutor for StubA {
-            fn hook_type(&self) -> &str { "a" }
+            fn hook_type(&self) -> &str {
+                "a"
+            }
             async fn execute(&self, _: &HookEvent) -> anyhow::Result<HookOutcome> {
                 Ok(HookOutcome::Continue)
             }
@@ -245,7 +282,13 @@ mod tests {
         reg1.register(HookEventType::SessionStart, Box::new(StubA));
         let reg2 = HookRegistry::new(); // empty
         reg1.merge(reg2);
-        assert_eq!(reg1.listeners.get(&HookEventType::SessionStart).unwrap().len(), 1);
+        assert_eq!(
+            reg1.listeners
+                .get(&HookEventType::SessionStart)
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     /// Verifies that all 8 event type variants produce correct event_type() mappings.
@@ -254,12 +297,45 @@ mod tests {
         let pairs = vec![
             (HookEvent::SessionStart, HookEventType::SessionStart),
             (HookEvent::SessionEnd, HookEventType::SessionEnd),
-            (HookEvent::PreToolExecute { tool: "".into(), params: serde_json::json!({}) }, HookEventType::PreToolExecute),
-            (HookEvent::PostToolExecute { tool: "".into(), result: crate::tools::ToolOutput { content: "".into(), metadata: None } }, HookEventType::PostToolExecute),
-            (HookEvent::UserInput { text: "".into() }, HookEventType::UserInput),
-            (HookEvent::PreLLMCall { messages: vec![] }, HookEventType::PreLLMCall),
-            (HookEvent::PostLLMCall { response: "".into(), usage: Default::default() }, HookEventType::PostLLMCall),
-            (HookEvent::PermissionRequested { tool: "".into(), risk: crate::permissions::RiskLevel::ReadOnly }, HookEventType::PermissionRequested),
+            (
+                HookEvent::PreToolExecute {
+                    tool: "".into(),
+                    params: serde_json::json!({}),
+                },
+                HookEventType::PreToolExecute,
+            ),
+            (
+                HookEvent::PostToolExecute {
+                    tool: "".into(),
+                    result: crate::tools::ToolOutput {
+                        content: "".into(),
+                        metadata: None,
+                    },
+                },
+                HookEventType::PostToolExecute,
+            ),
+            (
+                HookEvent::UserInput { text: "".into() },
+                HookEventType::UserInput,
+            ),
+            (
+                HookEvent::PreLLMCall { messages: vec![] },
+                HookEventType::PreLLMCall,
+            ),
+            (
+                HookEvent::PostLLMCall {
+                    response: "".into(),
+                    usage: Default::default(),
+                },
+                HookEventType::PostLLMCall,
+            ),
+            (
+                HookEvent::PermissionRequested {
+                    tool: "".into(),
+                    risk: crate::permissions::RiskLevel::ReadOnly,
+                },
+                HookEventType::PermissionRequested,
+            ),
         ];
         for (event, expected) in pairs {
             assert_eq!(event.event_type(), expected);

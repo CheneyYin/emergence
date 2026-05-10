@@ -9,13 +9,19 @@ pub struct ShellExecutor {
 
 impl ShellExecutor {
     pub fn new(command: String, timeout_ms: u64, abort_on_error: bool) -> Self {
-        Self { command, timeout_ms, abort_on_error }
+        Self {
+            command,
+            timeout_ms,
+            abort_on_error,
+        }
     }
 }
 
 #[async_trait]
 impl HookExecutor for ShellExecutor {
-    fn hook_type(&self) -> &str { "shell" }
+    fn hook_type(&self) -> &str {
+        "shell"
+    }
 
     async fn execute(&self, event: &HookEvent) -> anyhow::Result<HookOutcome> {
         // 模板变量替换：从 HookEvent 提取 payload
@@ -59,12 +65,16 @@ impl HookExecutor for ShellExecutor {
                     Ok(HookOutcome::Continue)
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    Ok(HookOutcome::Abort { reason: format!("Shell hook 失败: {}", stderr) })
+                    Ok(HookOutcome::Abort {
+                        reason: format!("Shell hook 失败: {}", stderr),
+                    })
                 }
             }
             Err(e) => {
                 if self.abort_on_error {
-                    Ok(HookOutcome::Abort { reason: e.to_string() })
+                    Ok(HookOutcome::Abort {
+                        reason: e.to_string(),
+                    })
                 } else {
                     tracing::warn!("Shell hook 错误: {}", e);
                     Ok(HookOutcome::Continue)
