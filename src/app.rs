@@ -67,11 +67,7 @@ impl App {
             .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d-%H%M%S").to_string());
 
         let session_manager = if let Some(ref cli_sess) = self.cli_session {
-            let key = if cli_sess
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_ascii_digit())
-            {
+            let key = if cli_sess.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                 SessionKey::Id(cli_sess.clone())
             } else {
                 SessionKey::Alias(cli_sess.clone())
