@@ -1,8 +1,8 @@
+use super::themes;
+use super::{RenderedMessage, TuiState};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use unicode_width::UnicodeWidthStr;
-use super::{TuiState, RenderedMessage};
-use super::themes;
 
 pub fn render(f: &mut Frame, state: &super::TuiState) {
     let layout = Layout::default()
@@ -33,17 +33,25 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
                             Span::styled(*line_content, themes::user_style()),
                         ]));
                     } else {
-                        lines.push(Line::from(vec![
-                            Span::styled(*line_content, themes::user_style()),
-                        ]));
+                        lines.push(Line::from(vec![Span::styled(
+                            *line_content,
+                            themes::user_style(),
+                        )]));
                     }
                 }
             }
-            RenderedMessage::Assistant { timestamp, content, thinking, duration, tokens } => {
+            RenderedMessage::Assistant {
+                timestamp,
+                content,
+                thinking,
+                duration,
+                tokens,
+            } => {
                 if let Some(t) = thinking {
-                    let think_lines: Vec<Line> = t.lines().map(|l| {
-                        Line::from(vec![Span::styled(l, themes::thinking_style())])
-                    }).collect();
+                    let think_lines: Vec<Line> = t
+                        .lines()
+                        .map(|l| Line::from(vec![Span::styled(l, themes::thinking_style())]))
+                        .collect();
                     lines.extend(think_lines);
                 }
                 let mut prefix = format!("[{}] 🤖", timestamp);
@@ -57,7 +65,8 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
                 if md_lines.is_empty() {
                     lines.push(Line::from(vec![Span::styled(prefix, themes::dim_style())]));
                 } else {
-                    let mut first_spans = vec![Span::styled(format!("{} ", &prefix), themes::dim_style())];
+                    let mut first_spans =
+                        vec![Span::styled(format!("{} ", &prefix), themes::dim_style())];
                     first_spans.extend(md_lines[0].spans.clone());
                     lines.push(Line::from(first_spans));
                     for md_line in &md_lines[1..] {
@@ -65,49 +74,56 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
                     }
                 }
             }
-            RenderedMessage::ToolCall { tool, params, duration } => {
+            RenderedMessage::ToolCall {
+                tool,
+                params,
+                duration,
+            } => {
                 let mut prefix = format!("tool:{}", tool);
                 if let Some(d) = duration {
                     prefix.push_str(&format!(" ({})", d));
                 }
-                lines.push(Line::from(vec![
-                    Span::styled(format!("{}: {}", prefix, params), themes::tool_style()),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    format!("{}: {}", prefix, params),
+                    themes::tool_style(),
+                )]));
             }
             RenderedMessage::ToolResult { output } => {
                 let truncated: Vec<&str> = output.lines().take(20).collect();
-                lines.push(Line::from(vec![
-                    Span::styled("┌", themes::tool_style()),
-                ]));
+                lines.push(Line::from(vec![Span::styled("┌", themes::tool_style())]));
                 for line_content in &truncated {
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("│ {}", line_content), themes::tool_style()),
-                    ]));
+                    lines.push(Line::from(vec![Span::styled(
+                        format!("│ {}", line_content),
+                        themes::tool_style(),
+                    )]));
                 }
-                lines.push(Line::from(vec![
-                    Span::styled("└", themes::tool_style()),
-                ]));
+                lines.push(Line::from(vec![Span::styled("└", themes::tool_style())]));
             }
             RenderedMessage::Thinking { content } => {
-                let think_lines: Vec<Line> = content.lines().map(|l| {
-                    Line::from(vec![Span::styled(l, themes::thinking_style())])
-                }).collect();
+                let think_lines: Vec<Line> = content
+                    .lines()
+                    .map(|l| Line::from(vec![Span::styled(l, themes::thinking_style())]))
+                    .collect();
                 lines.extend(think_lines);
             }
             RenderedMessage::Error { message } => {
-                lines.push(Line::from(vec![
-                    Span::styled(format!("⚠ {}", message), themes::error_style()),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    format!("⚠ {}", message),
+                    themes::error_style(),
+                )]));
             }
         }
     }
 
     // 精确折行计数：每行的展示宽度 / 列宽，向上取整
     let col_width = (area.width as usize).max(1);
-    let total_visual_lines: usize = lines.iter().map(|l| {
-        let w = l.width().max(1);
-        (w + col_width - 1) / col_width
-    }).sum();
+    let total_visual_lines: usize = lines
+        .iter()
+        .map(|l| {
+            let w = l.width().max(1);
+            (w + col_width - 1) / col_width
+        })
+        .sum();
     let max_scroll = total_visual_lines.saturating_sub(area.height as usize) as u16;
 
     let auto_follow = state.streaming || state.follow_bottom;
@@ -126,8 +142,7 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
 }
 
 fn render_status_bar(f: &mut Frame, area: Rect, state: &TuiState) {
-    let status = Paragraph::new(state.status_text.as_str())
-        .style(themes::status_bar_style());
+    let status = Paragraph::new(state.status_text.as_str()).style(themes::status_bar_style());
     f.render_widget(status, area);
 }
 

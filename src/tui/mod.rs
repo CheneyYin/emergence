@@ -1,18 +1,21 @@
-use std::io;
-use ratatui::prelude::*;
 use crossterm::{
-    event::{self, Event as CEvent, KeyCode, KeyModifiers, KeyEvent, EnableMouseCapture, DisableMouseCapture, MouseEventKind},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event as CEvent, KeyCode, KeyEvent,
+        KeyModifiers, MouseEventKind,
+    },
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use ratatui::prelude::*;
+use std::io;
 use tokio::sync::mpsc;
 
 use crate::protocol::{Action, Event as AppEvent};
 
+pub mod markdown;
+pub mod popups;
 pub mod themes;
 pub mod widgets;
-pub mod popups;
-pub mod markdown;
 
 /// TUI 状态
 pub struct TuiState {
@@ -31,12 +34,31 @@ pub struct TuiState {
 
 #[derive(Debug, Clone)]
 pub enum RenderedMessage {
-    User { timestamp: String, content: String },
-    Assistant { timestamp: String, content: String, thinking: Option<String>, duration: Option<String>, tokens: Option<u32> },
-    ToolCall { tool: String, params: String, duration: Option<String> },
-    ToolResult { output: String },
-    Thinking { content: String },
-    Error { message: String },
+    User {
+        timestamp: String,
+        content: String,
+    },
+    Assistant {
+        timestamp: String,
+        content: String,
+        thinking: Option<String>,
+        duration: Option<String>,
+        tokens: Option<u32>,
+    },
+    ToolCall {
+        tool: String,
+        params: String,
+        duration: Option<String>,
+    },
+    ToolResult {
+        output: String,
+    },
+    Thinking {
+        content: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +97,11 @@ pub async fn run(
     let res = app_loop(&mut terminal, &mut state, &action_tx, &mut event_rx).await;
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
 
     res
@@ -168,15 +194,28 @@ async fn handle_input_key(
     action_tx: &mpsc::UnboundedSender<Action>,
 ) -> anyhow::Result<()> {
     match key {
-        KeyEvent { code: KeyCode::Char('s'), modifiers: KeyModifiers::CONTROL, .. } |
-        KeyEvent { code: KeyCode::Enter, modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::Char('s'),
+            modifiers: KeyModifiers::CONTROL,
+            ..
+        }
+        | KeyEvent {
+            code: KeyCode::Enter,
+            modifiers: _,
+            ..
+        } => {
             if state.streaming || state.show_permission_dialog.is_some() {
                 return Ok(());
             }
             if !state.input_buffer.trim().is_empty() {
                 let input = std::mem::take(&mut state.input_buffer);
                 state.cursor_pos = 0;
-                if state.input_history.last().map(|s| s != &input).unwrap_or(true) {
+                if state
+                    .input_history
+                    .last()
+                    .map(|s| s != &input)
+                    .unwrap_or(true)
+                {
                     state.input_history.push(input.clone());
                     if state.input_history.len() > 1000 {
                         state.input_history.remove(0);
@@ -192,7 +231,11 @@ async fn handle_input_key(
                 state.status_text = "emergence · 处理中 · ⏳ streaming".into();
             }
         }
-        KeyEvent { code: KeyCode::Up, modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::Up,
+            modifiers: _,
+            ..
+        } => {
             if !state.input_history.is_empty() {
                 if state.history_index.is_none() {
                     state.pending_input = std::mem::take(&mut state.input_buffer);
@@ -208,7 +251,11 @@ async fn handle_input_key(
                 }
             }
         }
-        KeyEvent { code: KeyCode::Down, modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::Down,
+            modifiers: _,
+            ..
+        } => {
             if let Some(idx) = state.history_index {
                 if idx + 1 < state.input_history.len() {
                     state.history_index = Some(idx + 1);
@@ -220,18 +267,30 @@ async fn handle_input_key(
                 state.cursor_pos = state.input_buffer.len();
             }
         }
-        KeyEvent { code: KeyCode::Esc, modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: _,
+            ..
+        } => {
             state.input_buffer.clear();
             state.cursor_pos = 0;
             state.history_index = None;
             state.pending_input.clear();
         }
-        KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, .. } => {
+        KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            ..
+        } => {
             if state.streaming {
                 action_tx.send(Action::Cancel)?;
             }
         }
-        KeyEvent { code: KeyCode::Tab, modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::Tab,
+            modifiers: _,
+            ..
+        } => {
             state.input_buffer.insert_str(state.cursor_pos, "    ");
             state.cursor_pos += 4;
             state.history_index = None;
@@ -259,8 +318,8 @@ fn _save_input_history(history: &[String]) {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::permissions::RiskLevel;
     use crate::llm::StopReason;
+    use crate::permissions::RiskLevel;
 
     /// Verifies that TuiState can be constructed with default values.
     #[test]
@@ -274,7 +333,9 @@ pub(crate) mod tests {
             input_history: vec![],
             history_index: None,
             pending_input: String::new(),
-            scroll_y: 0, follow_bottom: true, cursor_pos: 0,
+            scroll_y: 0,
+            follow_bottom: true,
+            cursor_pos: 0,
         };
         assert!(state.messages.is_empty());
         assert_eq!(state.status_text, "ready");
@@ -283,18 +344,38 @@ pub(crate) mod tests {
     /// Verifies that RenderedMessage variants can be constructed and debugged.
     #[test]
     fn test_rendered_message_variants() {
-        let user = RenderedMessage::User { timestamp: "12:00".into(), content: "hi".into() };
+        let user = RenderedMessage::User {
+            timestamp: "12:00".into(),
+            content: "hi".into(),
+        };
         assert!(format!("{:?}", user).contains("User"));
 
-        let err = RenderedMessage::Error { message: "oops".into() };
+        let err = RenderedMessage::Error {
+            message: "oops".into(),
+        };
         assert!(format!("{:?}", err).contains("Error"));
     }
 
     /// Verifies that handle_app_event processes TextDelta by updating the last assistant message or creating one.
     #[test]
     fn test_handle_text_delta() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_y: 0, follow_bottom: true, cursor_pos: 0 };
-        let event = AppEvent::TextDelta { content: "Hello".into(), finish_reason: None };
+        let mut state = TuiState {
+            messages: vec![],
+            status_text: "".into(),
+            input_buffer: String::new(),
+            show_permission_dialog: None,
+            streaming: false,
+            input_history: vec![],
+            history_index: None,
+            pending_input: String::new(),
+            scroll_y: 0,
+            follow_bottom: true,
+            cursor_pos: 0,
+        };
+        let event = AppEvent::TextDelta {
+            content: "Hello".into(),
+            finish_reason: None,
+        };
         handle_app_event(event, &mut state).unwrap();
         assert!(state.streaming);
         assert_eq!(state.messages.len(), 1);
@@ -303,17 +384,51 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes ThinkingDelta by appending a Thinking message.
     #[test]
     fn test_handle_thinking_delta() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_y: 0, follow_bottom: true, cursor_pos: 0 };
-        let event = AppEvent::ThinkingDelta { content: "thinking...".into() };
+        let mut state = TuiState {
+            messages: vec![],
+            status_text: "".into(),
+            input_buffer: String::new(),
+            show_permission_dialog: None,
+            streaming: false,
+            input_history: vec![],
+            history_index: None,
+            pending_input: String::new(),
+            scroll_y: 0,
+            follow_bottom: true,
+            cursor_pos: 0,
+        };
+        let event = AppEvent::ThinkingDelta {
+            content: "thinking...".into(),
+        };
         handle_app_event(event, &mut state).unwrap();
-        assert!(matches!(state.messages.last(), Some(RenderedMessage::Thinking { .. })));
+        assert!(matches!(
+            state.messages.last(),
+            Some(RenderedMessage::Thinking { .. })
+        ));
     }
 
     /// Verifies that handle_app_event processes ToolRequest by setting the permission dialog.
     #[test]
     fn test_handle_tool_request() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_y: 0, follow_bottom: true, cursor_pos: 0 };
-        let event = AppEvent::ToolRequest { id: "t1".into(), name: "bash".into(), params: serde_json::json!({"cmd": "ls"}), risk: RiskLevel::Write };
+        let mut state = TuiState {
+            messages: vec![],
+            status_text: "".into(),
+            input_buffer: String::new(),
+            show_permission_dialog: None,
+            streaming: false,
+            input_history: vec![],
+            history_index: None,
+            pending_input: String::new(),
+            scroll_y: 0,
+            follow_bottom: true,
+            cursor_pos: 0,
+        };
+        let event = AppEvent::ToolRequest {
+            id: "t1".into(),
+            name: "bash".into(),
+            params: serde_json::json!({"cmd": "ls"}),
+            risk: RiskLevel::Write,
+        };
         handle_app_event(event, &mut state).unwrap();
         assert!(state.show_permission_dialog.is_some());
         let dialog = state.show_permission_dialog.unwrap();
@@ -324,8 +439,22 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes AgentDone by stopping streaming and updating status.
     #[test]
     fn test_handle_agent_done() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: true, input_history: vec![], history_index: None, pending_input: String::new(), scroll_y: 0, follow_bottom: true, cursor_pos: 0 };
-        let event = AppEvent::AgentDone { stop_reason: StopReason::EndTurn };
+        let mut state = TuiState {
+            messages: vec![],
+            status_text: "".into(),
+            input_buffer: String::new(),
+            show_permission_dialog: None,
+            streaming: true,
+            input_history: vec![],
+            history_index: None,
+            pending_input: String::new(),
+            scroll_y: 0,
+            follow_bottom: true,
+            cursor_pos: 0,
+        };
+        let event = AppEvent::AgentDone {
+            stop_reason: StopReason::EndTurn,
+        };
         handle_app_event(event, &mut state).unwrap();
         assert!(!state.streaming);
         assert!(state.status_text.contains("ready"));
@@ -334,17 +463,51 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes Error by appending an Error message.
     #[test]
     fn test_handle_error() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_y: 0, follow_bottom: true, cursor_pos: 0 };
-        let event = AppEvent::Error { message: "failed".into() };
+        let mut state = TuiState {
+            messages: vec![],
+            status_text: "".into(),
+            input_buffer: String::new(),
+            show_permission_dialog: None,
+            streaming: false,
+            input_history: vec![],
+            history_index: None,
+            pending_input: String::new(),
+            scroll_y: 0,
+            follow_bottom: true,
+            cursor_pos: 0,
+        };
+        let event = AppEvent::Error {
+            message: "failed".into(),
+        };
         handle_app_event(event, &mut state).unwrap();
-        assert!(matches!(state.messages.last(), Some(RenderedMessage::Error { .. })));
+        assert!(matches!(
+            state.messages.last(),
+            Some(RenderedMessage::Error { .. })
+        ));
     }
 
     /// Verifies that handle_permission_key with 'a' sends ApproveOnce and clears dialog.
     #[test]
     fn test_permission_key_approve_once() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: Some(PermissionDialogState { tool_name: "bash".into(), risk: RiskLevel::Write, params: serde_json::json!({}), tool_id: "t1".into() }), streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_y: 0, follow_bottom: true, cursor_pos: 0 };
+        let mut state = TuiState {
+            messages: vec![],
+            status_text: "".into(),
+            input_buffer: String::new(),
+            show_permission_dialog: Some(PermissionDialogState {
+                tool_name: "bash".into(),
+                risk: RiskLevel::Write,
+                params: serde_json::json!({}),
+                tool_id: "t1".into(),
+            }),
+            streaming: false,
+            input_history: vec![],
+            history_index: None,
+            pending_input: String::new(),
+            scroll_y: 0,
+            follow_bottom: true,
+            cursor_pos: 0,
+        };
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<crate::protocol::Action>();
         let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
         handle_permission_key(key, &mut state, &tx).unwrap();
@@ -354,19 +517,58 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes ToolResult by pushing ToolCall and ToolResult messages.
     #[test]
     fn test_handle_tool_result() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_y: 0, follow_bottom: true, cursor_pos: 0 };
-        let event = AppEvent::ToolResult { id: "t1".into(), name: "read".into(), params: serde_json::json!({"file": "x"}), output: "content".into(), metadata: None };
+        let mut state = TuiState {
+            messages: vec![],
+            status_text: "".into(),
+            input_buffer: String::new(),
+            show_permission_dialog: None,
+            streaming: false,
+            input_history: vec![],
+            history_index: None,
+            pending_input: String::new(),
+            scroll_y: 0,
+            follow_bottom: true,
+            cursor_pos: 0,
+        };
+        let event = AppEvent::ToolResult {
+            id: "t1".into(),
+            name: "read".into(),
+            params: serde_json::json!({"file": "x"}),
+            output: "content".into(),
+            metadata: None,
+        };
         handle_app_event(event, &mut state).unwrap();
         assert_eq!(state.messages.len(), 2);
-        assert!(matches!(state.messages[0], RenderedMessage::ToolCall { .. }));
-        assert!(matches!(state.messages[1], RenderedMessage::ToolResult { .. }));
+        assert!(matches!(
+            state.messages[0],
+            RenderedMessage::ToolCall { .. }
+        ));
+        assert!(matches!(
+            state.messages[1],
+            RenderedMessage::ToolResult { .. }
+        ));
     }
 
     /// Verifies that handle_app_event processes StatusUpdate by setting the status text.
     #[test]
     fn test_handle_status_update() {
-        let mut state = TuiState { messages: vec![], status_text: "".into(), input_buffer: String::new(), show_permission_dialog: None, streaming: false, input_history: vec![], history_index: None, pending_input: String::new(), scroll_y: 0, follow_bottom: true, cursor_pos: 0 };
-        let event = AppEvent::StatusUpdate { tokens: 42, model: "gpt-4".into() };
+        let mut state = TuiState {
+            messages: vec![],
+            status_text: "".into(),
+            input_buffer: String::new(),
+            show_permission_dialog: None,
+            streaming: false,
+            input_history: vec![],
+            history_index: None,
+            pending_input: String::new(),
+            scroll_y: 0,
+            follow_bottom: true,
+            cursor_pos: 0,
+        };
+        let event = AppEvent::StatusUpdate {
+            tokens: 42,
+            model: "gpt-4".into(),
+        };
         handle_app_event(event, &mut state).unwrap();
         assert!(state.status_text.contains("gpt-4"));
         assert!(state.status_text.contains("42"));
@@ -407,7 +609,7 @@ pub(crate) mod tests {
         let mut state = TuiState {
             messages: vec![],
             status_text: "ready".into(),
-            input_buffer: "你好a".into(),  // 6 bytes + 1 byte = 7 bytes, display width = 2+2+1 = 5
+            input_buffer: "你好a".into(), // 6 bytes + 1 byte = 7 bytes, display width = 2+2+1 = 5
             show_permission_dialog: None,
             streaming: false,
             input_history: vec![],
@@ -415,7 +617,7 @@ pub(crate) mod tests {
             pending_input: String::new(),
             scroll_y: 0,
             follow_bottom: true,
-            cursor_pos: 7,  // byte offset at end
+            cursor_pos: 7, // byte offset at end
         };
 
         let backend = ratatui::backend::TestBackend::new(80, 24);
@@ -435,7 +637,11 @@ pub(crate) mod tests {
     fn test_edit_left_moves_cursor() {
         let mut buf = String::from("hello");
         let mut cursor = 3;
-        apply_input_edit(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 2);
         assert_eq!(buf, "hello"); // buffer unchanged
     }
@@ -445,7 +651,11 @@ pub(crate) mod tests {
     fn test_edit_left_at_zero_is_noop() {
         let mut buf = String::from("hi");
         let mut cursor = 0;
-        apply_input_edit(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 0);
     }
 
@@ -454,7 +664,11 @@ pub(crate) mod tests {
     fn test_edit_right_moves_cursor() {
         let mut buf = String::from("hello");
         let mut cursor = 2;
-        apply_input_edit(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 3);
         assert_eq!(buf, "hello"); // buffer unchanged
     }
@@ -464,7 +678,11 @@ pub(crate) mod tests {
     fn test_edit_right_at_end_is_noop() {
         let mut buf = String::from("hi");
         let mut cursor = 2;
-        apply_input_edit(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 2);
     }
 
@@ -473,7 +691,11 @@ pub(crate) mod tests {
     fn test_edit_home_moves_to_start() {
         let mut buf = String::from("hello");
         let mut cursor = 4;
-        apply_input_edit(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Home, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 0);
         assert_eq!(buf, "hello");
     }
@@ -483,7 +705,11 @@ pub(crate) mod tests {
     fn test_edit_end_moves_to_end() {
         let mut buf = String::from("hello");
         let mut cursor = 1;
-        apply_input_edit(KeyEvent::new(KeyCode::End, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::End, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 5);
         assert_eq!(buf, "hello");
     }
@@ -493,7 +719,11 @@ pub(crate) mod tests {
     fn test_edit_char_inserts_at_cursor() {
         let mut buf = String::from("hlo");
         let mut cursor = 1;
-        apply_input_edit(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "helo");
         assert_eq!(cursor, 2);
     }
@@ -503,7 +733,11 @@ pub(crate) mod tests {
     fn test_edit_char_at_end_appends() {
         let mut buf = String::from("hi");
         let mut cursor = 2;
-        apply_input_edit(KeyEvent::new(KeyCode::Char('!'), KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Char('!'), KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "hi!");
         assert_eq!(cursor, 3);
     }
@@ -513,7 +747,11 @@ pub(crate) mod tests {
     fn test_edit_backspace_deletes_before_cursor() {
         let mut buf = String::from("hello");
         let mut cursor = 3;
-        apply_input_edit(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "helo");
         assert_eq!(cursor, 2);
     }
@@ -523,7 +761,11 @@ pub(crate) mod tests {
     fn test_edit_backspace_at_zero_is_noop() {
         let mut buf = String::from("hi");
         let mut cursor = 0;
-        apply_input_edit(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "hi");
         assert_eq!(cursor, 0);
     }
@@ -533,7 +775,11 @@ pub(crate) mod tests {
     fn test_edit_delete_removes_at_cursor() {
         let mut buf = String::from("hello");
         let mut cursor = 1;
-        apply_input_edit(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "hllo");
         assert_eq!(cursor, 1); // cursor stays
     }
@@ -543,7 +789,11 @@ pub(crate) mod tests {
     fn test_edit_delete_at_end_is_noop() {
         let mut buf = String::from("hi");
         let mut cursor = 2;
-        apply_input_edit(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "hi");
         assert_eq!(cursor, 2);
     }
@@ -553,11 +803,19 @@ pub(crate) mod tests {
     fn test_edit_chinese_char_cursor_advances_correctly() {
         let mut buf = String::new();
         let mut cursor = 0;
-        apply_input_edit(KeyEvent::new(KeyCode::Char('你'), KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Char('你'), KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "你");
         assert_eq!(cursor, 3); // 3-byte char, cursor on boundary after it
-        // Insert ASCII after — must not panic
-        apply_input_edit(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE), &mut buf, &mut cursor);
+                               // Insert ASCII after — must not panic
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "你a");
         assert_eq!(cursor, 4);
     }
@@ -567,9 +825,17 @@ pub(crate) mod tests {
     fn test_edit_left_over_multibyte_char() {
         let mut buf = String::from("你a"); // cursor at 0,3,4 boundaries
         let mut cursor = 4; // after "你a"
-        apply_input_edit(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 3); // before 'a', after '你'
-        apply_input_edit(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 0); // before '你'
     }
 
@@ -578,9 +844,17 @@ pub(crate) mod tests {
     fn test_edit_right_over_multibyte_char() {
         let mut buf = String::from("你a");
         let mut cursor = 0;
-        apply_input_edit(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 3); // after '你'
-        apply_input_edit(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(cursor, 4); // after 'a'
     }
 
@@ -589,11 +863,19 @@ pub(crate) mod tests {
     fn test_edit_backspace_multibyte_char() {
         let mut buf = String::from("你a");
         let mut cursor = 4; // after "你a"
-        apply_input_edit(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE), &mut buf, &mut cursor);
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "你");
         assert_eq!(cursor, 3); // after '你'
-        // Backspace again removes the Chinese char
-        apply_input_edit(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE), &mut buf, &mut cursor);
+                               // Backspace again removes the Chinese char
+        apply_input_edit(
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+            &mut buf,
+            &mut cursor,
+        );
         assert_eq!(buf, "");
         assert_eq!(cursor, 0);
     }
@@ -603,32 +885,56 @@ pub(crate) mod tests {
 /// Returns true if the buffer content was modified.
 fn apply_input_edit(key: KeyEvent, buffer: &mut String, cursor: &mut usize) -> bool {
     match key {
-        KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::NONE, .. } => {
+        KeyEvent {
+            code: KeyCode::Left,
+            modifiers: KeyModifiers::NONE,
+            ..
+        } => {
             if *cursor > 0 {
                 *cursor = buffer.floor_char_boundary(*cursor - 1);
             }
             false
         }
-        KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, .. } => {
+        KeyEvent {
+            code: KeyCode::Right,
+            modifiers: KeyModifiers::NONE,
+            ..
+        } => {
             if *cursor < buffer.len() {
                 *cursor = buffer.ceil_char_boundary(*cursor + 1);
             }
             false
         }
-        KeyEvent { code: KeyCode::Home, modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::Home,
+            modifiers: _,
+            ..
+        } => {
             *cursor = 0;
             false
         }
-        KeyEvent { code: KeyCode::End, modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::End,
+            modifiers: _,
+            ..
+        } => {
             *cursor = buffer.len();
             false
         }
-        KeyEvent { code: KeyCode::Char(c), modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::Char(c),
+            modifiers: _,
+            ..
+        } => {
             buffer.insert(*cursor, c);
             *cursor += c.len_utf8();
             true
         }
-        KeyEvent { code: KeyCode::Backspace, modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::Backspace,
+            modifiers: _,
+            ..
+        } => {
             if *cursor > 0 {
                 let prev = buffer.floor_char_boundary(*cursor - 1);
                 buffer.remove(prev);
@@ -638,7 +944,11 @@ fn apply_input_edit(key: KeyEvent, buffer: &mut String, cursor: &mut usize) -> b
                 false
             }
         }
-        KeyEvent { code: KeyCode::Delete, modifiers: _, .. } => {
+        KeyEvent {
+            code: KeyCode::Delete,
+            modifiers: _,
+            ..
+        } => {
             if *cursor < buffer.len() {
                 buffer.remove(*cursor);
                 true
@@ -652,9 +962,16 @@ fn apply_input_edit(key: KeyEvent, buffer: &mut String, cursor: &mut usize) -> b
 
 fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()> {
     match event {
-        AppEvent::TextDelta { content, finish_reason: _ } => {
+        AppEvent::TextDelta {
+            content,
+            finish_reason: _,
+        } => {
             state.streaming = true;
-            if let Some(RenderedMessage::Assistant { content: ref mut existing, .. }) = state.messages.last_mut() {
+            if let Some(RenderedMessage::Assistant {
+                content: ref mut existing,
+                ..
+            }) = state.messages.last_mut()
+            {
                 existing.push_str(&content);
             } else {
                 state.messages.push(RenderedMessage::Assistant {
@@ -668,13 +985,21 @@ fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()>
         }
         AppEvent::ThinkingDelta { content } => {
             // 累积到上一条 thinking 消息，避免每个 token 一行
-            if let Some(RenderedMessage::Thinking { content: ref mut existing }) = state.messages.last_mut() {
+            if let Some(RenderedMessage::Thinking {
+                content: ref mut existing,
+            }) = state.messages.last_mut()
+            {
                 existing.push_str(&content);
             } else {
                 state.messages.push(RenderedMessage::Thinking { content });
             }
         }
-        AppEvent::ToolRequest { id, name, params, risk } => {
+        AppEvent::ToolRequest {
+            id,
+            name,
+            params,
+            risk,
+        } => {
             state.show_permission_dialog = Some(PermissionDialogState {
                 tool_name: name,
                 risk,
@@ -682,7 +1007,13 @@ fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()>
                 tool_id: id,
             });
         }
-        AppEvent::ToolResult { id: _, name, params, output, metadata: _ } => {
+        AppEvent::ToolResult {
+            id: _,
+            name,
+            params,
+            output,
+            metadata: _,
+        } => {
             state.messages.push(RenderedMessage::ToolCall {
                 tool: name,
                 params: serde_json::to_string_pretty(&params).unwrap_or_default(),

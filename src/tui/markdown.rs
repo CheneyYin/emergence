@@ -118,12 +118,10 @@ pub fn render_markdown(content: &str) -> Vec<Line<'static>> {
                     current_cell.push_str(&text);
                 } else if in_code_block {
                     for line_text in text.lines() {
-                        code_block_buf.push(Line::from(vec![
-                            Span::styled(
-                                format!("  {}", line_text.to_string()),
-                                Style::default().fg(Color::Cyan).bg(Color::Rgb(30, 30, 40)),
-                            ),
-                        ]));
+                        code_block_buf.push(Line::from(vec![Span::styled(
+                            format!("  {}", line_text.to_string()),
+                            Style::default().fg(Color::Cyan).bg(Color::Rgb(30, 30, 40)),
+                        )]));
                     }
                 } else {
                     let style = current_style(&style_stack);
@@ -140,9 +138,7 @@ pub fn render_markdown(content: &str) -> Vec<Line<'static>> {
                 if in_cell {
                     current_cell.push_str(&code);
                 } else {
-                    let s = Style::default()
-                        .fg(Color::Green)
-                        .bg(Color::Rgb(50, 50, 50));
+                    let s = Style::default().fg(Color::Green).bg(Color::Rgb(50, 50, 50));
                     current_line.push(Span::styled(code.to_string(), s));
                 }
             }
@@ -294,7 +290,10 @@ mod tests {
         let result = render_markdown("**bold**");
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].spans[0].content, "bold");
-        assert!(result[0].spans[0].style.add_modifier.contains(Modifier::BOLD));
+        assert!(result[0].spans[0]
+            .style
+            .add_modifier
+            .contains(Modifier::BOLD));
     }
 
     /// Verifies italic text is rendered with ITALIC modifier.
@@ -303,7 +302,10 @@ mod tests {
         let result = render_markdown("*italic*");
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].spans[0].content, "italic");
-        assert!(result[0].spans[0].style.add_modifier.contains(Modifier::ITALIC));
+        assert!(result[0].spans[0]
+            .style
+            .add_modifier
+            .contains(Modifier::ITALIC));
     }
 
     /// Verifies inline code is rendered with a different foreground color.
@@ -397,7 +399,11 @@ mod tests {
     fn test_llm_style_table() {
         let md = "| File | Description |\n|------|-------------|\n| main.rs | Entry point |\n| lib.rs | Library root |";
         let result = render_markdown(md);
-        assert!(result.len() >= 4, "expected >=4 lines, got {} lines", result.len());
+        assert!(
+            result.len() >= 4,
+            "expected >=4 lines, got {} lines",
+            result.len()
+        );
     }
 
     /// Verifies a table with single-column layout works.

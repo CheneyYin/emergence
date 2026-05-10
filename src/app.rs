@@ -1,18 +1,18 @@
+use crate::commands::{CommandContext, CommandOutput, CommandRegistry};
+use crate::config::ConfigManager;
+use crate::hooks::{HookEvent, HookOutcome, HookRegistry};
+use crate::llm::{
+    ChatMessage, Content, GenerationConfig, ModelInfo, Role, StopReason, StreamEvent,
+    ToolDefinition,
+};
+use crate::permissions::{PermissionStore, RiskLevel};
+use crate::protocol::{Action, Event};
+use crate::session::store::{JsonFileStore, SessionStore};
+use crate::session::{SessionKey, SessionManager};
+use crate::tools::ToolRegistry;
+use futures::StreamExt;
 use std::path::PathBuf;
 use tokio::sync::{mpsc, oneshot};
-use crate::config::ConfigManager;
-use crate::session::{SessionManager, SessionKey};
-use crate::session::store::{JsonFileStore, SessionStore};
-use crate::tools::ToolRegistry;
-use crate::commands::{CommandRegistry, CommandContext, CommandOutput};
-use crate::permissions::{PermissionStore, RiskLevel};
-use crate::hooks::{HookRegistry, HookEvent, HookOutcome};
-use crate::protocol::{Action, Event};
-use crate::llm::{
-    StreamEvent, ChatMessage, Role, Content,
-    GenerationConfig, ToolDefinition, StopReason, ModelInfo,
-};
-use futures::StreamExt;
 
 /// Agent 状态机
 #[derive(Debug, Clone, PartialEq)]
@@ -35,12 +35,14 @@ pub struct App {
 
 impl App {
     pub fn new(session: Option<String>, model: Option<String>) -> anyhow::Result<Self> {
-        Ok(Self { cli_session: session, cli_model: model })
+        Ok(Self {
+            cli_session: session,
+            cli_model: model,
+        })
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
-        let home_dir = dirs_functions::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let home_dir = dirs_functions::home_dir().unwrap_or_else(|| PathBuf::from("."));
         let project_dir = std::env::current_dir()?;
 
         // 1. 加载配置
@@ -56,15 +58,20 @@ impl App {
 
         // 3. 创建 SessionStore（持久化）
         let store_dir = config.session_store_dir();
-        let session_store: Box<dyn SessionStore> =
-            Box::new(JsonFileStore::new(store_dir));
+        let session_store: Box<dyn SessionStore> = Box::new(JsonFileStore::new(store_dir));
 
         // 3.5 创建/加载会话
-        let session_id = self.cli_session.clone()
+        let session_id = self
+            .cli_session
+            .clone()
             .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d-%H%M%S").to_string());
 
         let session_manager = if let Some(ref cli_sess) = self.cli_session {
-            let key = if cli_sess.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+            let key = if cli_sess
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_ascii_digit())
+            {
                 SessionKey::Id(cli_sess.clone())
             } else {
                 SessionKey::Alias(cli_sess.clone())
@@ -96,7 +103,10 @@ impl App {
         let mut provider_registry = crate::llm::ProviderRegistry::new();
         for (name, provider_cfg) in &config.settings.providers {
             let models = vec![ModelInfo {
-                id: provider_cfg.default_model.clone().unwrap_or_else(|| "default".into()),
+                id: provider_cfg
+                    .default_model
+                    .clone()
+                    .unwrap_or_else(|| "default".into()),
                 name: name.clone(),
                 max_tokens: 128000,
             }];
@@ -111,8 +121,8 @@ impl App {
         // 6.5 加载 Hook 注册表
         let user_hooks_path = home_dir.join(".emergence").join("hooks.json");
         let project_hooks_path = project_dir.join(".emergence").join("hooks.json");
-        let mut hook_registry = HookRegistry::load(&user_hooks_path)
-            .unwrap_or_else(|_| HookRegistry::new());
+        let mut hook_registry =
+            HookRegistry::load(&user_hooks_path).unwrap_or_else(|_| HookRegistry::new());
         if let Ok(project_hr) = HookRegistry::load(&project_hooks_path) {
             hook_registry.merge(project_hr);
         }
@@ -293,45 +303,43 @@ impl AgentLoop {
             finish_reason: None,
         });
         // 欢迎消息后立即发送 AgentDone，否则 TUI 的 streaming 永久为 true，Enter 被拦截
-        let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+        let _ = self.event_tx.send(Event::AgentDone {
+            stop_reason: StopReason::EndTurn,
+        });
 
         while let Some(action) = self.action_rx.recv().await {
             match &self.state {
-                AgentState::WaitingPermission { .. } => {
-                    match action {
-                        Action::ApproveOnce | Action::ApproveAlways | Action::Deny => {
-                            self.handle_permission_response(action).await?;
-                        }
-                        Action::Quit => {
-                            self.save_and_exit().await?;
+                AgentState::WaitingPermission { .. } => match action {
+                    Action::ApproveOnce | Action::ApproveAlways | Action::Deny => {
+                        self.handle_permission_response(action).await?;
+                    }
+                    Action::Quit => {
+                        self.save_and_exit().await?;
+                        return Ok(());
+                    }
+                    _ => {}
+                },
+                _ => match action {
+                    Action::Submit(input) => {
+                        self.handle_submit(input).await?;
+                        if self.should_exit {
                             return Ok(());
                         }
-                        _ => {}
                     }
-                }
-                _ => {
-                    match action {
-                        Action::Submit(input) => {
-                            self.handle_submit(input).await?;
-                            if self.should_exit {
-                                return Ok(());
+                    Action::Cancel => {
+                        self.cancel_stream();
+                        if let Some(turn) = self.session.current_turn() {
+                            if turn.status == crate::session::TurnStatus::InProgress {
+                                let _ = self.session.complete_turn();
                             }
                         }
-                        Action::Cancel => {
-                            self.cancel_stream();
-                            if let Some(turn) = self.session.current_turn() {
-                                if turn.status == crate::session::TurnStatus::InProgress {
-                                    let _ = self.session.complete_turn();
-                                }
-                            }
-                        }
-                        Action::Quit => {
-                            self.save_and_exit().await?;
-                            return Ok(());
-                        }
-                        _ => {}
                     }
-                }
+                    Action::Quit => {
+                        self.save_and_exit().await?;
+                        return Ok(());
+                    }
+                    _ => {}
+                },
             }
         }
 
@@ -370,24 +378,38 @@ impl AgentLoop {
 
         self.state = AgentState::Processing;
 
-        let _ = self.hook_registry.dispatch(&HookEvent::UserInput { text: input.clone() }).await;
+        let _ = self
+            .hook_registry
+            .dispatch(&HookEvent::UserInput {
+                text: input.clone(),
+            })
+            .await;
 
         let user_msg = ChatMessage {
             role: Role::User,
             content: Content::Text(input),
-            name: None, tool_call_id: None,
+            name: None,
+            tool_call_id: None,
         };
         self.session.begin_turn(user_msg);
 
         let (messages, tools) = self.build_messages();
 
-        self.hook_registry.dispatch(&HookEvent::PreLLMCall { messages: messages.clone() }).await;
+        self.hook_registry
+            .dispatch(&HookEvent::PreLLMCall {
+                messages: messages.clone(),
+            })
+            .await;
 
         self.retry_count = 0;
         if let Err(e) = self.call_llm_with_retry(messages, &tools).await {
-            let _ = self.event_tx.send(Event::Error { message: e.to_string() });
+            let _ = self.event_tx.send(Event::Error {
+                message: e.to_string(),
+            });
             self.state = AgentState::Idle;
-            let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+            let _ = self.event_tx.send(Event::AgentDone {
+                stop_reason: StopReason::EndTurn,
+            });
         }
 
         Ok(())
@@ -396,7 +418,9 @@ impl AgentLoop {
     fn build_messages(&self) -> (Vec<ChatMessage>, Vec<ToolDefinition>) {
         let tools = self.tool_registry.definitions();
         let available_skills_text = self.skill_registry.format_available_for_prompt();
-        let active_contents: Vec<String> = self.session.active_skills()
+        let active_contents: Vec<String> = self
+            .session
+            .active_skills()
             .iter()
             .filter_map(|name| self.skill_registry.load_full_content(name).ok())
             .collect();
@@ -427,17 +451,26 @@ impl AgentLoop {
                             self.retry_count += 1;
                             let delay = 5u64;
                             let _ = self.event_tx.send(Event::Error {
-                                message: format!("Rate limited, {}s 后重试 ({}/{})...", delay, self.retry_count, self.max_retries),
+                                message: format!(
+                                    "Rate limited, {}s 后重试 ({}/{})...",
+                                    delay, self.retry_count, self.max_retries
+                                ),
                             });
                             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
                             continue;
                         }
-                    } else if err_msg.contains("500") || err_msg.contains("503") || err_msg.contains("server") {
+                    } else if err_msg.contains("500")
+                        || err_msg.contains("503")
+                        || err_msg.contains("server")
+                    {
                         if self.retry_count < self.max_retries {
                             self.retry_count += 1;
                             let delay = 2u64.pow(self.retry_count);
                             let _ = self.event_tx.send(Event::Error {
-                                message: format!("服务器错误, {}s 后重试 ({}/{})...", delay, self.retry_count, self.max_retries),
+                                message: format!(
+                                    "服务器错误, {}s 后重试 ({}/{})...",
+                                    delay, self.retry_count, self.max_retries
+                                ),
                             });
                             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
                             continue;
@@ -451,7 +484,10 @@ impl AgentLoop {
                             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                             continue;
                         }
-                    } else if err_msg.contains("401") || err_msg.contains("403") || err_msg.contains("auth") {
+                    } else if err_msg.contains("401")
+                        || err_msg.contains("403")
+                        || err_msg.contains("auth")
+                    {
                         let _ = self.event_tx.send(Event::Error {
                             message: format!("认证错误: {}。请检查 API key。", err_msg),
                         });
@@ -483,14 +519,19 @@ impl AgentLoop {
                 Ok(output) => match output {
                     CommandOutput::Success { message } => {
                         let _ = self.event_tx.send(Event::TextDelta {
-                            content: format!("{}\n", message), finish_reason: None,
+                            content: format!("{}\n", message),
+                            finish_reason: None,
                         });
                         // 命令响应后必须发送 AgentDone，否则 TUI 的 streaming 不归零
-                        let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+                        let _ = self.event_tx.send(Event::AgentDone {
+                            stop_reason: StopReason::EndTurn,
+                        });
                     }
                     CommandOutput::Error { message } => {
                         let _ = self.event_tx.send(Event::Error { message });
-                        let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+                        let _ = self.event_tx.send(Event::AgentDone {
+                            stop_reason: StopReason::EndTurn,
+                        });
                     }
                     CommandOutput::Quit => {
                         should_quit = true;
@@ -504,18 +545,26 @@ impl AgentLoop {
                             content: format!("已切换到会话: {}\n", self.session.session().id),
                             finish_reason: None,
                         });
-                        let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+                        let _ = self.event_tx.send(Event::AgentDone {
+                            stop_reason: StopReason::EndTurn,
+                        });
                     }
                 },
                 Err(e) => {
-                    let _ = self.event_tx.send(Event::Error { message: e.to_string() });
-                    let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+                    let _ = self.event_tx.send(Event::Error {
+                        message: e.to_string(),
+                    });
+                    let _ = self.event_tx.send(Event::AgentDone {
+                        stop_reason: StopReason::EndTurn,
+                    });
                 }
             }
         }
 
         if should_quit {
-            let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+            let _ = self.event_tx.send(Event::AgentDone {
+                stop_reason: StopReason::EndTurn,
+            });
             self.save_and_exit().await?;
             self.should_exit = true;
         }
@@ -531,19 +580,27 @@ impl AgentLoop {
         let provider_name = self.model.split('/').next().unwrap_or("deepseek");
         let model_name = self.model.split('/').nth(1).unwrap_or("deepseek-v4-pro");
 
-        let provider = self.provider_registry.get(provider_name)
+        let provider = self
+            .provider_registry
+            .get(provider_name)
             .ok_or_else(|| anyhow::anyhow!("未知 provider: {}", provider_name))?;
 
         let gen_config = self.config.generation_config();
         let gen_config = GenerationConfig {
-            tools: if tools.is_empty() { None } else { Some(tools.to_vec()) },
+            tools: if tools.is_empty() {
+                None
+            } else {
+                Some(tools.to_vec())
+            },
             ..gen_config
         };
 
         let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
         self.stream_cancel = Some(cancel_tx);
 
-        let mut stream = provider.chat(model_name, &messages, tools, &gen_config).await?;
+        let mut stream = provider
+            .chat(model_name, &messages, tools, &gen_config)
+            .await?;
 
         self.state = AgentState::Streaming;
         self.tool_call_buffer = None;
@@ -584,7 +641,10 @@ impl AgentLoop {
     ) -> anyhow::Result<bool> {
         match event {
             StreamEvent::TextDelta(content) => {
-                let _ = self.event_tx.send(Event::TextDelta { content, finish_reason: None });
+                let _ = self.event_tx.send(Event::TextDelta {
+                    content,
+                    finish_reason: None,
+                });
                 Ok(true)
             }
             StreamEvent::ThinkingDelta(content) => {
@@ -592,13 +652,19 @@ impl AgentLoop {
                 let _ = self.event_tx.send(Event::ThinkingDelta { content });
                 Ok(true)
             }
-            StreamEvent::ToolCallDelta { id, name, arguments_json_fragment } => {
+            StreamEvent::ToolCallDelta {
+                id,
+                name,
+                arguments_json_fragment,
+            } => {
                 if let Some((_, _, ref mut args)) = &mut self.tool_call_buffer {
                     let appended = format!("{}{}", args, arguments_json_fragment);
                     if serde_json::from_str::<serde_json::Value>(&appended).is_ok() {
                         *args = appended;
                     } else if arguments_json_fragment.starts_with('{')
-                        && serde_json::from_str::<serde_json::Value>(&arguments_json_fragment).is_ok() {
+                        && serde_json::from_str::<serde_json::Value>(&arguments_json_fragment)
+                            .is_ok()
+                    {
                         // Only replace if the fragment is a complete JSON object — not a bare string
                         *args = arguments_json_fragment;
                     } else {
@@ -622,10 +688,12 @@ impl AgentLoop {
                         }
                     }
                     _ => {
-                        self.hook_registry.dispatch(&HookEvent::PostLLMCall {
-                            response: String::new(),
-                            usage: usage.clone(),
-                        }).await;
+                        self.hook_registry
+                            .dispatch(&HookEvent::PostLLMCall {
+                                response: String::new(),
+                                usage: usage.clone(),
+                            })
+                            .await;
 
                         let _ = self.session.complete_turn();
                         if let Some(ref store) = self.session_store {
@@ -636,7 +704,10 @@ impl AgentLoop {
                         if self.session.should_compact(threshold) {
                             self.session.compact(3);
                             let _ = self.event_tx.send(Event::Error {
-                                message: format!("上下文已自动压缩。当前 token 用量: ~{}", self.session.estimated_tokens()),
+                                message: format!(
+                                    "上下文已自动压缩。当前 token 用量: ~{}",
+                                    self.session.estimated_tokens()
+                                ),
                             });
                         }
 
@@ -652,7 +723,7 @@ impl AgentLoop {
         }
     }
 
-async fn handle_tool_use(
+    async fn handle_tool_use(
         &mut self,
         tool_id: String,
         tool_name: String,
@@ -660,8 +731,9 @@ async fn handle_tool_use(
         _tools: &[ToolDefinition],
     ) -> anyhow::Result<()> {
         let json_str = extract_json_object(&args_json);
-        let params: serde_json::Value = serde_json::from_str(json_str)
-            .map_err(|e| anyhow::anyhow!("tool call args parse error: {} (raw: {})", e, args_json))?;
+        let params: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
+            anyhow::anyhow!("tool call args parse error: {} (raw: {})", e, args_json)
+        })?;
 
         // Push assistant tool_use 消息到会话（解析成功后再 push，确保 tool result 一定跟随）
         let thinking = std::mem::take(&mut self.thinking_buffer);
@@ -682,22 +754,36 @@ async fn handle_tool_use(
         };
         let _ = self.session.push(tool_use_msg);
 
-        let risk = self.tool_registry.risk_level(&tool_name, &params)
+        let risk = self
+            .tool_registry
+            .risk_level(&tool_name, &params)
             .unwrap_or(RiskLevel::System);
 
         // 执行工具（确保 tool result 一定跟随 tool_use，满足 API 要求）
         let result = match risk {
             RiskLevel::ReadOnly => {
-                Box::pin(self.execute_and_feedback(tool_id.clone(), tool_name.clone(), params.clone())).await
+                Box::pin(self.execute_and_feedback(
+                    tool_id.clone(),
+                    tool_name.clone(),
+                    params.clone(),
+                ))
+                .await
             }
             RiskLevel::Write | RiskLevel::System => {
-                self.hook_registry.dispatch(&HookEvent::PermissionRequested {
-                    tool: tool_name.clone(),
-                    risk,
-                }).await;
+                self.hook_registry
+                    .dispatch(&HookEvent::PermissionRequested {
+                        tool: tool_name.clone(),
+                        risk,
+                    })
+                    .await;
 
                 if self.permission_store.is_allowed(&tool_name, risk) {
-                    Box::pin(self.execute_and_feedback(tool_id.clone(), tool_name.clone(), params.clone())).await
+                    Box::pin(self.execute_and_feedback(
+                        tool_id.clone(),
+                        tool_name.clone(),
+                        params.clone(),
+                    ))
+                    .await
                 } else {
                     self.state = AgentState::WaitingPermission {
                         tool_name: tool_name.clone(),
@@ -731,9 +817,13 @@ async fn handle_tool_use(
                 self.retry_count = 0;
                 let retry_fut = Box::pin(self.call_llm_with_retry(messages, &tools));
                 if let Err(e2) = retry_fut.await {
-                    let _ = self.event_tx.send(Event::Error { message: e2.to_string() });
+                    let _ = self.event_tx.send(Event::Error {
+                        message: e2.to_string(),
+                    });
                     self.state = AgentState::Idle;
-                    let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+                    let _ = self.event_tx.send(Event::AgentDone {
+                        stop_reason: StopReason::EndTurn,
+                    });
                 }
             }
         }
@@ -747,13 +837,19 @@ async fn handle_tool_use(
         tool_name: String,
         params: serde_json::Value,
     ) -> anyhow::Result<()> {
-        for outcome in self.hook_registry.dispatch(&HookEvent::PreToolExecute {
-            tool: tool_name.clone(),
-            params: params.clone(),
-        }).await {
+        for outcome in self
+            .hook_registry
+            .dispatch(&HookEvent::PreToolExecute {
+                tool: tool_name.clone(),
+                params: params.clone(),
+            })
+            .await
+        {
             if let HookOutcome::Abort { reason } = outcome {
                 let abort_msg = format!("工具执行被 hook 中止: {}", reason);
-                let _ = self.event_tx.send(Event::Error { message: abort_msg.clone() });
+                let _ = self.event_tx.send(Event::Error {
+                    message: abort_msg.clone(),
+                });
                 let tool_msg = ChatMessage {
                     role: Role::Tool,
                     content: Content::Text(abort_msg),
@@ -781,15 +877,22 @@ async fn handle_tool_use(
             }
             Err(e) => {
                 let error_msg = format!("Tool 执行错误: {}", e);
-                let _ = self.event_tx.send(Event::Error { message: error_msg.clone() });
-                crate::tools::ToolOutput { content: error_msg, metadata: None }
+                let _ = self.event_tx.send(Event::Error {
+                    message: error_msg.clone(),
+                });
+                crate::tools::ToolOutput {
+                    content: error_msg,
+                    metadata: None,
+                }
             }
         };
 
-        self.hook_registry.dispatch(&HookEvent::PostToolExecute {
-            tool: tool_name.clone(),
-            result: output.clone(),
-        }).await;
+        self.hook_registry
+            .dispatch(&HookEvent::PostToolExecute {
+                tool: tool_name.clone(),
+                result: output.clone(),
+            })
+            .await;
 
         let tool_msg = ChatMessage {
             role: Role::Tool,
@@ -804,24 +907,32 @@ async fn handle_tool_use(
         // Box::pin to break recursive async chain
         let retry_fut = Box::pin(self.call_llm_with_retry(messages, &tools));
         if let Err(e) = retry_fut.await {
-            let _ = self.event_tx.send(Event::Error { message: e.to_string() });
+            let _ = self.event_tx.send(Event::Error {
+                message: e.to_string(),
+            });
             self.state = AgentState::Idle;
-            let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+            let _ = self.event_tx.send(Event::AgentDone {
+                stop_reason: StopReason::EndTurn,
+            });
         }
 
         Ok(())
     }
 
     async fn handle_permission_response(&mut self, action: Action) -> anyhow::Result<()> {
-        let (tool_name, tool_id, params, risk) = match std::mem::replace(&mut self.state, AgentState::Processing) {
-            AgentState::WaitingPermission { tool_name, tool_id, params, risk } => {
-                (tool_name, tool_id, params, risk)
-            }
-            other => {
-                self.state = other;
-                return Ok(());
-            }
-        };
+        let (tool_name, tool_id, params, risk) =
+            match std::mem::replace(&mut self.state, AgentState::Processing) {
+                AgentState::WaitingPermission {
+                    tool_name,
+                    tool_id,
+                    params,
+                    risk,
+                } => (tool_name, tool_id, params, risk),
+                other => {
+                    self.state = other;
+                    return Ok(());
+                }
+            };
 
         match action {
             Action::ApproveOnce => {
@@ -844,13 +955,22 @@ async fn handle_tool_use(
                 self.retry_count = 0;
                 let retry_fut = Box::pin(self.call_llm_with_retry(messages, &tools));
                 if let Err(e) = retry_fut.await {
-                    let _ = self.event_tx.send(Event::Error { message: e.to_string() });
+                    let _ = self.event_tx.send(Event::Error {
+                        message: e.to_string(),
+                    });
                     self.state = AgentState::Idle;
-                    let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
+                    let _ = self.event_tx.send(Event::AgentDone {
+                        stop_reason: StopReason::EndTurn,
+                    });
                 }
             }
             _ => {
-                self.state = AgentState::WaitingPermission { tool_name, tool_id, params, risk };
+                self.state = AgentState::WaitingPermission {
+                    tool_name,
+                    tool_id,
+                    params,
+                    risk,
+                };
             }
         }
 
@@ -868,8 +988,11 @@ mod tests {
         let home = TempDir::new().unwrap();
         let project = TempDir::new().unwrap();
         crate::config::ConfigManager::load(
-            home.path().to_path_buf(), project.path().to_path_buf(), None,
-        ).unwrap()
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap()
     }
 
     /// Verifies that AgentState variants can be constructed and compared.
@@ -878,8 +1001,10 @@ mod tests {
         assert_eq!(AgentState::Idle, AgentState::Idle);
         assert_ne!(AgentState::Idle, AgentState::Processing);
         let waiting = AgentState::WaitingPermission {
-            tool_name: "bash".into(), tool_id: "t1".into(),
-            params: serde_json::json!({}), risk: RiskLevel::Write,
+            tool_name: "bash".into(),
+            tool_id: "t1".into(),
+            params: serde_json::json!({}),
+            risk: RiskLevel::Write,
         };
         assert!(matches!(waiting, AgentState::WaitingPermission { .. }));
     }
@@ -934,11 +1059,15 @@ mod tests {
         std::fs::write(
             emergence_dir.join("settings.json"),
             r#"{"permissions": {"auto_approve": ["read", "grep"]}}"#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let config = crate::config::ConfigManager::load(
-            home.path().to_path_buf(), project.path().to_path_buf(), None,
-        ).unwrap();
+            home.path().to_path_buf(),
+            project.path().to_path_buf(),
+            None,
+        )
+        .unwrap();
         let session = crate::session::SessionManager::new("test".into());
         let (_action_tx, action_rx) = tokio::sync::mpsc::unbounded_channel();
         let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();

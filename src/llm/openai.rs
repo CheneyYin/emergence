@@ -1,6 +1,6 @@
 use super::*;
-use reqwest::Client;
 use futures::StreamExt;
+use reqwest::Client;
 use tokio_stream::wrappers::ReceiverStream;
 
 pub struct OpenAIAdapter {
@@ -29,30 +29,41 @@ impl OpenAIAdapter {
         config: &GenerationConfig,
     ) -> String {
         // 将消息转换为 OpenAI JSON 格式：ContentPart::ToolUse → tool_calls
-        let openai_messages: Vec<serde_json::Value> = messages.iter().map(|m| {
-            let mut msg_json = serde_json::json!({
-                "role": m.role,
-                "content": m.content,
-            });
-            if let (Some(n), Some(tc_id)) = (&m.name, &m.tool_call_id) {
-                msg_json["name"] = serde_json::json!(n);
-                msg_json["tool_call_id"] = serde_json::json!(tc_id);
-            }
-            // Convert ContentPart::ToolUse to tool_calls
-            if let Content::Parts(parts) = &m.content {
-                let tool_uses: Vec<&crate::llm::ContentPart> = parts.iter()
-                    .filter(|p| matches!(p, crate::llm::ContentPart::ToolUse { .. }))
-                    .collect();
-                if !tool_uses.is_empty() {
-                    // Extract Text parts as reasoning_content (DeepSeek thinking mode)
-                    let reasoning: String = parts.iter().filter_map(|p| {
-                        if let crate::llm::ContentPart::Text { text } = p { Some(text.as_str()) } else { None }
-                    }).collect::<Vec<_>>().join("");
-                    if !reasoning.is_empty() {
-                        msg_json["reasoning_content"] = serde_json::json!(reasoning);
-                    }
-                    msg_json["content"] = serde_json::Value::Null;
-                    let tool_calls: Vec<serde_json::Value> = tool_uses.iter().map(|tu| {
+        let openai_messages: Vec<serde_json::Value> = messages
+            .iter()
+            .map(|m| {
+                let mut msg_json = serde_json::json!({
+                    "role": m.role,
+                    "content": m.content,
+                });
+                if let (Some(n), Some(tc_id)) = (&m.name, &m.tool_call_id) {
+                    msg_json["name"] = serde_json::json!(n);
+                    msg_json["tool_call_id"] = serde_json::json!(tc_id);
+                }
+                // Convert ContentPart::ToolUse to tool_calls
+                if let Content::Parts(parts) = &m.content {
+                    let tool_uses: Vec<&crate::llm::ContentPart> = parts
+                        .iter()
+                        .filter(|p| matches!(p, crate::llm::ContentPart::ToolUse { .. }))
+                        .collect();
+                    if !tool_uses.is_empty() {
+                        // Extract Text parts as reasoning_content (DeepSeek thinking mode)
+                        let reasoning: String = parts
+                            .iter()
+                            .filter_map(|p| {
+                                if let crate::llm::ContentPart::Text { text } = p {
+                                    Some(text.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("");
+                        if !reasoning.is_empty() {
+                            msg_json["reasoning_content"] = serde_json::json!(reasoning);
+                        }
+                        msg_json["content"] = serde_json::Value::Null;
+                        let tool_calls: Vec<serde_json::Value> = tool_uses.iter().map(|tu| {
                         if let crate::llm::ContentPart::ToolUse { id, name, input } = tu {
                             serde_json::json!({
                                 "id": id,
@@ -66,11 +77,12 @@ impl OpenAIAdapter {
                             serde_json::json!({})
                         }
                     }).collect();
-                    msg_json["tool_calls"] = serde_json::json!(tool_calls);
+                        msg_json["tool_calls"] = serde_json::json!(tool_calls);
+                    }
                 }
-            }
-            msg_json
-        }).collect();
+                msg_json
+            })
+            .collect();
 
         let mut body = serde_json::json!({
             "model": model,
@@ -137,7 +149,11 @@ impl OpenAIAdapter {
             let func = &tc["function"];
             let name = func["name"].as_str().unwrap_or("").to_string();
             let args = func["arguments"].as_str().unwrap_or("").to_string();
-            Some(Ok(StreamEvent::ToolCallDelta { id, name, arguments_json_fragment: args }))
+            Some(Ok(StreamEvent::ToolCallDelta {
+                id,
+                name,
+                arguments_json_fragment: args,
+            }))
         } else if let Some(content) = delta["content"].as_str() {
             if let Some(finish) = choice["finish_reason"].as_str() {
                 let stop_reason = match finish {
@@ -146,10 +162,13 @@ impl OpenAIAdapter {
                     "length" => StopReason::MaxTokens,
                     _ => StopReason::EndTurn,
                 };
-                let usage = parsed.get("usage").map(|u| Usage {
-                    input_tokens: u["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-                    output_tokens: u["completion_tokens"].as_u64().unwrap_or(0) as u32,
-                }).unwrap_or_default();
+                let usage = parsed
+                    .get("usage")
+                    .map(|u| Usage {
+                        input_tokens: u["prompt_tokens"].as_u64().unwrap_or(0) as u32,
+                        output_tokens: u["completion_tokens"].as_u64().unwrap_or(0) as u32,
+                    })
+                    .unwrap_or_default();
                 Some(Ok(StreamEvent::Finish { stop_reason, usage }))
             } else {
                 Some(Ok(StreamEvent::TextDelta(content.to_string())))
@@ -157,10 +176,13 @@ impl OpenAIAdapter {
         } else if let Some(thinking) = delta["reasoning_content"].as_str() {
             Some(Ok(StreamEvent::ThinkingDelta(thinking.to_string())))
         } else if choice["finish_reason"].as_str().is_some() {
-            let usage = parsed.get("usage").map(|u| Usage {
-                input_tokens: u["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-                output_tokens: u["completion_tokens"].as_u64().unwrap_or(0) as u32,
-            }).unwrap_or_default();
+            let usage = parsed
+                .get("usage")
+                .map(|u| Usage {
+                    input_tokens: u["prompt_tokens"].as_u64().unwrap_or(0) as u32,
+                    output_tokens: u["completion_tokens"].as_u64().unwrap_or(0) as u32,
+                })
+                .unwrap_or_default();
             Some(Ok(StreamEvent::Finish {
                 stop_reason: StopReason::EndTurn,
                 usage,
@@ -183,7 +205,8 @@ impl Provider for OpenAIAdapter {
         let body = self.build_chat_request(model, messages, tools, config);
         let url = format!("{}/chat/completions", self.base_url);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -278,13 +301,18 @@ mod tests {
         let messages = vec![ChatMessage {
             role: Role::User,
             content: Content::Text("hello".to_string()),
-            name: None, tool_call_id: None,
+            name: None,
+            tool_call_id: None,
         }];
         let body = adapter.build_chat_request(
             "deepseek-v4-pro",
             &messages,
             &[],
-            &GenerationConfig { max_tokens: 32000, temperature: 0.7, ..config() },
+            &GenerationConfig {
+                max_tokens: 32000,
+                temperature: 0.7,
+                ..config()
+            },
         );
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(parsed["model"], "deepseek-v4-pro");
@@ -302,10 +330,7 @@ mod tests {
             description: "读取文件".into(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         }];
-        let body = adapter.build_chat_request(
-            "m1", &[], &tools,
-            &config(),
-        );
+        let body = adapter.build_chat_request("m1", &[], &tools, &config());
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         let tool_arr = parsed["tools"].as_array().unwrap();
         assert_eq!(tool_arr.len(), 1);
@@ -316,7 +341,7 @@ mod tests {
     #[test]
     fn test_parse_sse_text_delta() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"delta":{"content":"Hello"},"index":0}]}"#
+            r#"data: {"choices":[{"delta":{"content":"Hello"},"index":0}]}"#,
         );
         match event {
             Some(Ok(StreamEvent::TextDelta(text))) => assert_eq!(text, "Hello"),
@@ -328,7 +353,7 @@ mod tests {
     #[test]
     fn test_parse_sse_finish() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"finish_reason":"stop","delta":{},"index":0}],"usage":{"prompt_tokens":10,"completion_tokens":5}}"#
+            r#"data: {"choices":[{"finish_reason":"stop","delta":{},"index":0}],"usage":{"prompt_tokens":10,"completion_tokens":5}}"#,
         );
         match event {
             Some(Ok(StreamEvent::Finish { stop_reason, usage })) => {
@@ -360,10 +385,14 @@ mod tests {
     #[test]
     fn test_parse_sse_tool_call_delta() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"delta":{"tool_calls":[{"id":"tc_1","function":{"name":"read","arguments":"{\"p"}}]},"index":0}]}"#
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"id":"tc_1","function":{"name":"read","arguments":"{\"p"}}]},"index":0}]}"#,
         );
         match event {
-            Some(Ok(StreamEvent::ToolCallDelta { id, name, arguments_json_fragment })) => {
+            Some(Ok(StreamEvent::ToolCallDelta {
+                id,
+                name,
+                arguments_json_fragment,
+            })) => {
                 assert_eq!(id, "tc_1");
                 assert_eq!(name, "read");
                 assert_eq!(arguments_json_fragment, "{\"p");
@@ -376,7 +405,7 @@ mod tests {
     #[test]
     fn test_parse_sse_thinking_delta() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"delta":{"reasoning_content":"Let me think..."},"index":0}]}"#
+            r#"data: {"choices":[{"delta":{"reasoning_content":"Let me think..."},"index":0}]}"#,
         );
         match event {
             Some(Ok(StreamEvent::ThinkingDelta(text))) => assert_eq!(text, "Let me think..."),
@@ -409,7 +438,7 @@ mod tests {
     #[test]
     fn test_parse_sse_finish_reason_tool_calls() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"finish_reason":"tool_calls","delta":{"content":"done"},"index":0}]}"#
+            r#"data: {"choices":[{"finish_reason":"tool_calls","delta":{"content":"done"},"index":0}]}"#,
         );
         match event {
             Some(Ok(StreamEvent::Finish { stop_reason, .. })) => {
@@ -423,7 +452,7 @@ mod tests {
     #[test]
     fn test_parse_sse_finish_reason_length() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"finish_reason":"length","delta":{"content":"done"},"index":0}]}"#
+            r#"data: {"choices":[{"finish_reason":"length","delta":{"content":"done"},"index":0}]}"#,
         );
         match event {
             Some(Ok(StreamEvent::Finish { stop_reason, .. })) => {
@@ -440,8 +469,13 @@ mod tests {
     fn test_build_chat_request_with_stop_sequences() {
         let adapter = make_adapter();
         let body = adapter.build_chat_request(
-            "m1", &[], &[],
-            &GenerationConfig { stop_sequences: vec!["```".into(), "END".into()], ..config() },
+            "m1",
+            &[],
+            &[],
+            &GenerationConfig {
+                stop_sequences: vec!["```".into(), "END".into()],
+                ..config()
+            },
         );
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         let stops = parsed["stop"].as_array().unwrap();
@@ -455,8 +489,13 @@ mod tests {
     fn test_build_chat_request_with_thinking() {
         let adapter = make_adapter();
         let body = adapter.build_chat_request(
-            "m1", &[], &[],
-            &GenerationConfig { thinking: Some(16000), ..config() },
+            "m1",
+            &[],
+            &[],
+            &GenerationConfig {
+                thinking: Some(16000),
+                ..config()
+            },
         );
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         let thinking = &parsed["thinking"];
@@ -468,7 +507,7 @@ mod tests {
     #[test]
     fn test_parse_sse_unknown_finish_reason_defaults_to_end_turn() {
         let event = OpenAIAdapter::parse_sse_line(
-            r#"data: {"choices":[{"finish_reason":"some_unknown_reason","delta":{"content":"done"},"index":0}]}"#
+            r#"data: {"choices":[{"finish_reason":"some_unknown_reason","delta":{"content":"done"},"index":0}]}"#,
         );
         match event {
             Some(Ok(StreamEvent::Finish { stop_reason, .. })) => {
