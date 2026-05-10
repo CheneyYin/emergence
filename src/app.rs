@@ -558,24 +558,6 @@ impl AgentLoop {
                 match stop_reason {
                     StopReason::ToolUse => {
                         if let Some((id, name, args)) = self.tool_call_buffer.take() {
-                            // Push assistant tool_use message with reasoning content
-                            let thinking = std::mem::take(&mut self.thinking_buffer);
-                            let mut parts = Vec::new();
-                            if !thinking.is_empty() {
-                                parts.push(crate::llm::ContentPart::Text { text: thinking });
-                            }
-                            parts.push(crate::llm::ContentPart::ToolUse {
-                                id: id.clone(),
-                                name: name.clone(),
-                                input: serde_json::from_str(&args).unwrap_or_default(),
-                            });
-                            let tool_use_msg = ChatMessage {
-                                role: Role::Assistant,
-                                content: Content::Parts(parts),
-                                name: None,
-                                tool_call_id: None,
-                            };
-                            let _ = self.session.push(tool_use_msg);
                             self.handle_tool_use(id, name, args, tools).await?;
                         }
                     }
@@ -617,14 +599,35 @@ impl AgentLoop {
         args_json: String,
         _tools: &[ToolDefinition],
     ) -> anyhow::Result<()> {
-        let params: serde_json::Value = serde_json::from_str(&args_json)?;
+        let params: serde_json::Value = serde_json::from_str(&args_json)
+            .map_err(|e| anyhow::anyhow!("tool call args parse error: {}", e))?;
+
+        // Push assistant tool_use 消息到会话（解析成功后再 push，确保 tool result 一定跟随）
+        let thinking = std::mem::take(&mut self.thinking_buffer);
+        let mut parts = Vec::new();
+        if !thinking.is_empty() {
+            parts.push(crate::llm::ContentPart::Text { text: thinking });
+        }
+        parts.push(crate::llm::ContentPart::ToolUse {
+            id: tool_id.clone(),
+            name: tool_name.clone(),
+            input: params.clone(),
+        });
+        let tool_use_msg = ChatMessage {
+            role: Role::Assistant,
+            content: Content::Parts(parts),
+            name: None,
+            tool_call_id: None,
+        };
+        let _ = self.session.push(tool_use_msg);
 
         let risk = self.tool_registry.risk_level(&tool_name, &params)
             .unwrap_or(RiskLevel::System);
 
-        match risk {
+        // 执行工具（确保 tool result 一定跟随 tool_use，满足 API 要求）
+        let result = match risk {
             RiskLevel::ReadOnly => {
-                Box::pin(self.execute_and_feedback(tool_id, tool_name, params)).await?;
+                Box::pin(self.execute_and_feedback(tool_id.clone(), tool_name.clone(), params.clone())).await
             }
             RiskLevel::Write | RiskLevel::System => {
                 self.hook_registry.dispatch(&HookEvent::PermissionRequested {
@@ -633,7 +636,7 @@ impl AgentLoop {
                 }).await;
 
                 if self.permission_store.is_allowed(&tool_name, risk) {
-                    Box::pin(self.execute_and_feedback(tool_id, tool_name, params)).await?;
+                    Box::pin(self.execute_and_feedback(tool_id.clone(), tool_name.clone(), params.clone())).await
                 } else {
                     self.state = AgentState::WaitingPermission {
                         tool_name: tool_name.clone(),
@@ -642,11 +645,34 @@ impl AgentLoop {
                         risk,
                     };
                     let _ = self.event_tx.send(Event::ToolRequest {
-                        id: tool_id,
-                        name: tool_name,
-                        params,
+                        id: tool_id.clone(),
+                        name: tool_name.clone(),
+                        params: params.clone(),
                         risk,
                     });
+                    return Ok(());
+                }
+            }
+        };
+
+        match result {
+            Ok(()) => {}
+            Err(e) => {
+                // tool_use 消息已推入会话，必须跟一个 tool result
+                let error_msg = ChatMessage {
+                    role: Role::Tool,
+                    content: Content::Text(format!("tool execution error: {}", e)),
+                    name: Some(tool_name),
+                    tool_call_id: Some(tool_id.clone()),
+                };
+                let _ = self.session.push(error_msg);
+                let (messages, tools) = self.build_messages();
+                self.retry_count = 0;
+                let retry_fut = Box::pin(self.call_llm_with_retry(messages, &tools));
+                if let Err(e2) = retry_fut.await {
+                    let _ = self.event_tx.send(Event::Error { message: e2.to_string() });
+                    self.state = AgentState::Idle;
+                    let _ = self.event_tx.send(Event::AgentDone { stop_reason: StopReason::EndTurn });
                 }
             }
         }
