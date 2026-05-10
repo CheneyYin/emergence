@@ -190,6 +190,57 @@ pub struct AgentLoop {
     should_exit: bool,
 }
 
+/// Extracts the outermost JSON object `{...}` from a string that may contain
+/// trailing/leading garbage (e.g. from overlapping tool-call delta fragments).
+fn extract_json_object(s: &str) -> &str {
+    // Try to find a complete {}-balanced object (preferred for tool calls)
+    if let Some(start) = s.find('{') {
+        let bytes = s.as_bytes();
+        let mut depth: u32 = 0;
+        let mut in_string = false;
+        let mut escaped = false;
+
+        for (i, &b) in bytes.iter().enumerate().skip(start) {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if in_string {
+                match b {
+                    b'"' => in_string = false,
+                    b'\\' => escaped = true,
+                    _ => {}
+                }
+            } else {
+                match b {
+                    b'"' => in_string = true,
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return &s[start..=i];
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // No complete {}-object found.
+    // Fallback: strip trailing garbage by finding the longest valid JSON prefix.
+    for end in (1..=s.len()).rev() {
+        if !s.is_char_boundary(end) {
+            continue;
+        }
+        if serde_json::from_str::<serde_json::Value>(&s[..end]).is_ok() {
+            return &s[..end];
+        }
+    }
+
+    s
+}
+
 impl AgentLoop {
     pub fn new(
         config: ConfigManager,
@@ -543,11 +594,12 @@ impl AgentLoop {
             }
             StreamEvent::ToolCallDelta { id, name, arguments_json_fragment } => {
                 if let Some((_, _, ref mut args)) = &mut self.tool_call_buffer {
-                    // 先尝试追加后解析；若失败且新片段单独可解析，则替换
                     let appended = format!("{}{}", args, arguments_json_fragment);
                     if serde_json::from_str::<serde_json::Value>(&appended).is_ok() {
                         *args = appended;
-                    } else if serde_json::from_str::<serde_json::Value>(&arguments_json_fragment).is_ok() {
+                    } else if arguments_json_fragment.starts_with('{')
+                        && serde_json::from_str::<serde_json::Value>(&arguments_json_fragment).is_ok() {
+                        // Only replace if the fragment is a complete JSON object — not a bare string
                         *args = arguments_json_fragment;
                     } else {
                         args.push_str(&arguments_json_fragment);
@@ -600,15 +652,16 @@ impl AgentLoop {
         }
     }
 
-    async fn handle_tool_use(
+async fn handle_tool_use(
         &mut self,
         tool_id: String,
         tool_name: String,
         args_json: String,
         _tools: &[ToolDefinition],
     ) -> anyhow::Result<()> {
-        let params: serde_json::Value = serde_json::from_str(&args_json)
-            .map_err(|e| anyhow::anyhow!("tool call args parse error: {}", e))?;
+        let json_str = extract_json_object(&args_json);
+        let params: serde_json::Value = serde_json::from_str(json_str)
+            .map_err(|e| anyhow::anyhow!("tool call args parse error: {} (raw: {})", e, args_json))?;
 
         // Push assistant tool_use 消息到会话（解析成功后再 push，确保 tool result 一定跟随）
         let thinking = std::mem::take(&mut self.thinking_buffer);
@@ -913,5 +966,51 @@ mod tests {
     fn test_home_dir() {
         let home = dirs_functions::home_dir();
         assert!(home.is_some());
+    }
+
+    /// Verifies clean JSON is returned unchanged.
+    #[test]
+    fn test_extract_json_clean() {
+        assert_eq!(extract_json_object(r#"{"file":"x"}"#), r#"{"file":"x"}"#);
+    }
+
+    /// Verifies trailing garbage after complete JSON is stripped.
+    #[test]
+    fn test_extract_json_trailing_garbage() {
+        assert_eq!(extract_json_object(r#"{"a":1}{"b":"#), r#"{"a":1}"#);
+    }
+
+    /// Verifies leading garbage before JSON is stripped.
+    #[test]
+    fn test_extract_json_leading_garbage() {
+        assert_eq!(extract_json_object(r#",{"a":1}"#), r#"{"a":1}"#);
+    }
+
+    /// Verifies nested braces in string values are handled correctly.
+    #[test]
+    fn test_extract_json_nested_braces_in_string() {
+        let input = r#"{"code":"fn main() { println!(); }"}"#;
+        assert_eq!(extract_json_object(input), input);
+    }
+
+    /// Verifies empty object is extracted.
+    #[test]
+    fn test_extract_json_empty_object() {
+        assert_eq!(extract_json_object(r#"{}"#), r#"{}"#);
+    }
+
+    /// Verifies incremental fragment returns empty (no complete JSON found).
+    #[test]
+    fn test_extract_json_incremental_not_nested() {
+        // When two complete objects both get sent, the first one is extracted
+        assert_eq!(extract_json_object(r#"{"a":1}{"b":2}"#), r#"{"a":1}"#);
+    }
+
+    /// Simulates a string fragment (valid JSON) replacing accumulated state,
+    /// then later fragments contaminating the result as `"x"}`.
+    #[test]
+    fn test_extract_json_string_fragment_contamination() {
+        let result = extract_json_object(r#""x"}"#);
+        assert_eq!(result, r#""x""#);
     }
 }

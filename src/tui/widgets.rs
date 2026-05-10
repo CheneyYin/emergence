@@ -1,5 +1,6 @@
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+use unicode_width::UnicodeWidthStr;
 use super::{TuiState, RenderedMessage};
 use super::themes;
 
@@ -52,18 +53,15 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
                 if let Some(tok) = tokens {
                     prefix.push_str(&format!(" {} tokens", tok));
                 }
-                // 按换行拆分内容，第一行包含前缀，后续行只有内容
-                let content_lines: Vec<&str> = content.lines().collect();
-                for (i, line_content) in content_lines.iter().enumerate() {
-                    if i == 0 {
-                        lines.push(Line::from(vec![
-                            Span::styled(format!("{} ", &prefix), themes::dim_style()),
-                            Span::styled(*line_content, themes::assistant_style()),
-                        ]));
-                    } else {
-                        lines.push(Line::from(vec![
-                            Span::styled(*line_content, themes::assistant_style()),
-                        ]));
+                let md_lines = super::markdown::render_markdown(content);
+                if md_lines.is_empty() {
+                    lines.push(Line::from(vec![Span::styled(prefix, themes::dim_style())]));
+                } else {
+                    let mut first_spans = vec![Span::styled(format!("{} ", &prefix), themes::dim_style())];
+                    first_spans.extend(md_lines[0].spans.clone());
+                    lines.push(Line::from(first_spans));
+                    for md_line in &md_lines[1..] {
+                        lines.push(md_line.clone());
                     }
                 }
             }
@@ -104,23 +102,25 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
         }
     }
 
-    // streaming 时自动滚到底部
-    let total_chars: usize = lines.iter().map(|l| l.width()).sum();
+    // 精确折行计数：每行的展示宽度 / 列宽，向上取整
     let col_width = (area.width as usize).max(1);
-    let wrapped_estimate = total_chars / col_width + total_chars / 40;
-    let max_scroll = wrapped_estimate.saturating_sub(area.height as usize) as u16;
+    let total_visual_lines: usize = lines.iter().map(|l| {
+        let w = l.width().max(1);
+        (w + col_width - 1) / col_width
+    }).sum();
+    let max_scroll = total_visual_lines.saturating_sub(area.height as usize) as u16;
+
+    let auto_follow = state.streaming || state.follow_bottom;
+    let scroll_offset = if auto_follow {
+        max_scroll
+    } else {
+        state.scroll_y.min(max_scroll as usize) as u16
+    };
 
     let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::NONE))
         .wrap(Wrap { trim: true })
-        .scroll((
-            if state.streaming || state.scroll_y == 0 {
-                max_scroll  // 默认跟底
-            } else {
-                state.scroll_y.min(max_scroll as usize) as u16
-            },
-            0,
-        ));
+        .scroll((scroll_offset, 0));
 
     f.render_widget(paragraph, area);
 }
@@ -136,4 +136,9 @@ fn render_input_box(f: &mut Frame, area: Rect, state: &TuiState) {
         .block(Block::default().borders(Borders::TOP))
         .style(Style::default().fg(Color::White));
     f.render_widget(input, area);
+    let display_width = state.input_buffer[..state.cursor_pos].width() as u16;
+    f.set_cursor_position(Position::new(
+        (2 + display_width).min(area.width.saturating_sub(1)),
+        area.y + 1,
+    ));
 }
