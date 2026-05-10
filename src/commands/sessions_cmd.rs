@@ -57,7 +57,7 @@ impl Command for SessionsCommand {
             }
             Some("load") => {
                 if let Some(key_str) = args.get(1) {
-                    let key = if key_str.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                    let key = if key_str.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                         SessionKey::Id(key_str.clone())
                     } else {
                         SessionKey::Alias(key_str.clone())
@@ -76,7 +76,7 @@ impl Command for SessionsCommand {
             }
             Some("delete") => {
                 if let Some(key_str) = args.get(1) {
-                    let key = if key_str.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                    let key = if key_str.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                         SessionKey::Id(key_str.clone())
                     } else {
                         SessionKey::Alias(key_str.clone())

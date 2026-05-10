@@ -25,9 +25,9 @@ impl LogListener {
     fn new(config: serde_json::Value) -> anyhow::Result<Self> {
         let path = config["path"].as_str().unwrap_or("~/.emergence/hooks.log");
         let format = config["format"].as_str().unwrap_or("json").to_string();
-        let path = if path.starts_with("~/") {
+        let path = if let Some(rest) = path.strip_prefix("~/") {
             let home = std::env::var("HOME").unwrap_or_default();
-            std::path::PathBuf::from(home).join(&path[2..])
+            std::path::PathBuf::from(home).join(rest)
         } else {
             std::path::PathBuf::from(path)
         };

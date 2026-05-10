@@ -121,7 +121,7 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
         .iter()
         .map(|l| {
             let w = l.width().max(1);
-            (w + col_width - 1) / col_width
+            w.div_ceil(col_width)
         })
         .sum();
     let max_scroll = total_visual_lines.saturating_sub(area.height as usize) as u16;

@@ -5,6 +5,12 @@ pub struct ProviderRegistry {
     providers: HashMap<String, Box<dyn Provider>>,
 }
 
+impl Default for ProviderRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProviderRegistry {
     pub fn new() -> Self {
         Self {

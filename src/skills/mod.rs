@@ -37,6 +37,12 @@ pub struct SkillRegistry {
     skills: HashMap<String, SkillMeta>,
 }
 
+impl Default for SkillRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SkillRegistry {
     pub fn new() -> Self {
         Self {
@@ -70,7 +76,7 @@ impl SkillRegistry {
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "md") {
+            if path.extension().is_some_and(|ext| ext == "md") {
                 if let Ok(meta) = self.parse_frontmatter(&path, source.clone()) {
                     self.skills.insert(meta.name.clone(), meta);
                 }
@@ -85,10 +91,10 @@ impl SkillRegistry {
         let content = std::fs::read_to_string(path)?;
 
         // 提取 frontmatter (--- ... ---)
-        let fm = if content.starts_with("---") {
-            let end = content[3..].find("---").map(|i| i + 3).unwrap_or(0);
-            if end > 3 {
-                Some(&content[3..end])
+        let fm = if let Some(rest) = content.strip_prefix("---") {
+            let end = rest.find("---").unwrap_or(0);
+            if end > 0 {
+                Some(&rest[..end])
             } else {
                 None
             }
@@ -131,7 +137,7 @@ impl SkillRegistry {
             return String::new();
         }
         let mut text = String::from("<available_skills>\n");
-        for (_, meta) in &self.skills {
+        for meta in self.skills.values() {
             text.push_str(&format!(
                 "- skill: {} | desc: {}\n",
                 meta.name, meta.description
@@ -151,9 +157,9 @@ impl SkillRegistry {
         let content = std::fs::read_to_string(&meta.file_path)?;
 
         // 去掉 frontmatter
-        let body = if content.starts_with("---") {
-            if let Some(end) = content[3..].find("---") {
-                content[3 + end + 3..].trim().to_string()
+        let body = if let Some(rest) = content.strip_prefix("---") {
+            if let Some(end) = rest.find("---") {
+                rest[end + 3..].trim().to_string()
             } else {
                 content
             }

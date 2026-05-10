@@ -69,6 +69,12 @@ pub struct CommandRegistry {
     known_names: Vec<String>,
 }
 
+impl Default for CommandRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandRegistry {
     pub fn new() -> Self {
         Self {
@@ -110,7 +116,7 @@ impl CommandRegistry {
         }
 
         // 别名匹配
-        for (_, cmd) in &self.commands {
+        for cmd in self.commands.values() {
             if cmd.aliases().contains(&name) {
                 return cmd.execute(&args, ctx).await;
             }
@@ -178,7 +184,7 @@ impl CommandRegistry {
     pub fn list(&self) -> Vec<CommandMeta> {
         let mut seen = std::collections::HashSet::new();
         let mut metas = Vec::new();
-        for (_, cmd) in &self.commands {
+        for cmd in self.commands.values() {
             if seen.insert(cmd.name().to_string()) {
                 metas.push(CommandMeta {
                     name: cmd.name().to_string(),

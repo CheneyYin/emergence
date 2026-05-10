@@ -70,7 +70,7 @@ impl App {
             let key = if cli_sess
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_ascii_digit())
+                .is_some_and(|c| c.is_ascii_digit())
             {
                 SessionKey::Id(cli_sess.clone())
             } else {
@@ -252,6 +252,7 @@ fn extract_json_object(s: &str) -> &str {
 }
 
 impl AgentLoop {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: ConfigManager,
         session: SessionManager,

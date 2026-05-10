@@ -119,7 +119,7 @@ pub fn render_markdown(content: &str) -> Vec<Line<'static>> {
                 } else if in_code_block {
                     for line_text in text.lines() {
                         code_block_buf.push(Line::from(vec![Span::styled(
-                            format!("  {}", line_text.to_string()),
+                            format!("  {}", line_text),
                             Style::default().fg(Color::Cyan).bg(Color::Rgb(30, 30, 40)),
                         )]));
                     }

@@ -111,6 +111,12 @@ pub struct HookRegistry {
     listeners: HashMap<HookEventType, Vec<Box<dyn HookExecutor>>>,
 }
 
+impl Default for HookRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HookRegistry {
     pub fn new() -> Self {
         Self {

@@ -934,28 +934,22 @@ fn apply_input_edit(key: KeyEvent, buffer: &mut String, cursor: &mut usize) -> b
             code: KeyCode::Backspace,
             modifiers: _,
             ..
-        } => {
-            if *cursor > 0 {
+        }
+            if *cursor > 0 => {
                 let prev = buffer.floor_char_boundary(*cursor - 1);
                 buffer.remove(prev);
                 *cursor = prev;
                 true
-            } else {
-                false
             }
-        }
         KeyEvent {
             code: KeyCode::Delete,
             modifiers: _,
             ..
-        } => {
-            if *cursor < buffer.len() {
+        }
+            if *cursor < buffer.len() => {
                 buffer.remove(*cursor);
                 true
-            } else {
-                false
             }
-        }
         _ => false,
     }
 }
