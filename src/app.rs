@@ -543,7 +543,15 @@ impl AgentLoop {
             }
             StreamEvent::ToolCallDelta { id, name, arguments_json_fragment } => {
                 if let Some((_, _, ref mut args)) = &mut self.tool_call_buffer {
-                    args.push_str(&arguments_json_fragment);
+                    // 先尝试追加后解析；若失败且新片段单独可解析，则替换
+                    let appended = format!("{}{}", args, arguments_json_fragment);
+                    if serde_json::from_str::<serde_json::Value>(&appended).is_ok() {
+                        *args = appended;
+                    } else if serde_json::from_str::<serde_json::Value>(&arguments_json_fragment).is_ok() {
+                        *args = arguments_json_fragment;
+                    } else {
+                        args.push_str(&arguments_json_fragment);
+                    }
                 } else {
                     self.tool_call_buffer = Some((id, name, arguments_json_fragment));
                 }
@@ -599,8 +607,7 @@ impl AgentLoop {
         args_json: String,
         _tools: &[ToolDefinition],
     ) -> anyhow::Result<()> {
-        let cleaned = clean_tool_args(&args_json);
-        let params: serde_json::Value = serde_json::from_str(&cleaned)
+        let params: serde_json::Value = serde_json::from_str(&args_json)
             .map_err(|e| anyhow::anyhow!("tool call args parse error: {}", e))?;
 
         // Push assistant tool_use 消息到会话（解析成功后再 push，确保 tool result 一定跟随）
@@ -796,34 +803,6 @@ impl AgentLoop {
 
         Ok(())
     }
-}
-
-/// 清理累积的工具调用参数 JSON：从可能重复/重叠的字符串中提取有效 JSON
-fn clean_tool_args(raw: &str) -> String {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return "{}".into();
-    }
-    // 尝试直接解析
-    if serde_json::from_str::<serde_json::Value>(raw).is_ok() {
-        return raw.to_string();
-    }
-    // 查找第一个完整的 JSON 对象 {...}（处理重复拼接）
-    if let Some(end) = raw.find("}{") {
-        let first = &raw[..=end];  // includes the first }
-        if serde_json::from_str::<serde_json::Value>(first).is_ok() {
-            return first.to_string();
-        }
-    }
-    // 尝试取最后一个 {...}
-    if let Some(last_start) = raw.rfind("}{") {
-        let last = &raw[last_start + 1..];
-        if serde_json::from_str::<serde_json::Value>(last).is_ok() {
-            return last.to_string();
-        }
-    }
-    // 回退：返回 {} 避免崩溃
-    "{}".into()
 }
 
 #[cfg(test)]
