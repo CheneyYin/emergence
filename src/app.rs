@@ -588,6 +588,7 @@ impl AgentLoop {
 
         loop {
             tokio::select! {
+                biased;
                 action = self.action_rx.recv() => {
                     if matches!(action, Some(Action::Cancel)) {
                         self.state = AgentState::Idle;
