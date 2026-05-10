@@ -121,48 +121,42 @@ async fn app_loop(
             }
         })?;
 
-        // 周期性检查键盘输入 + agent 事件：
-        // sleep 提供轮询间隔，避免 spawn_blocking 不可取消导致进程挂起
-        tokio::select! {
-            app_event = event_rx.recv() => {
-                match app_event {
-                    Some(event) => handle_app_event(event, state)?,
-                    None => break,
-                }
+        // 非阻塞排空所有 agent 事件
+        loop {
+            match event_rx.try_recv() {
+                Ok(event) => handle_app_event(event, state)?,
+                Err(mpsc::error::TryRecvError::Empty) => break,
+                Err(mpsc::error::TryRecvError::Disconnected) => return Ok(()),
             }
+        }
 
-            _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {
-                // 非阻塞检查是否有输入事件
-                if event::poll(std::time::Duration::ZERO)? {
-                    let crossterm_event = event::read()?;
-                    match crossterm_event {
-                        CEvent::Key(key) => {
-                            if state.show_permission_dialog.is_some() {
-                                handle_permission_key(key, state, action_tx)?;
-                            } else {
-                                handle_input_key(key, state, action_tx).await?;
-                            }
-                        }
-                        CEvent::Mouse(mouse) => match mouse.kind {
-                            MouseEventKind::ScrollDown => {
-                                state.follow_bottom = false;
-                                state.scroll_y = state.scroll_y.saturating_add(3);
-                            }
-                            MouseEventKind::ScrollUp => {
-                                state.follow_bottom = false;
-                                state.scroll_y = state.scroll_y.saturating_sub(3);
-                            }
-                            _ => {}
-                        },
-                        CEvent::Resize(_, _) => { /* 自动重绘 */ }
-                        _ => {}
+        // 始终检查键盘/鼠标输入（不会被事件洪水饿死）
+        if event::poll(std::time::Duration::from_millis(10))? {
+            let crossterm_event = event::read()?;
+            match crossterm_event {
+                CEvent::Key(key) => {
+                    if state.show_permission_dialog.is_some() {
+                        handle_permission_key(key, state, action_tx)?;
+                    } else {
+                        handle_input_key(key, state, action_tx).await?;
                     }
                 }
+                CEvent::Mouse(mouse) => match mouse.kind {
+                    MouseEventKind::ScrollDown => {
+                        state.follow_bottom = false;
+                        state.scroll_y = state.scroll_y.saturating_add(3);
+                    }
+                    MouseEventKind::ScrollUp => {
+                        state.follow_bottom = false;
+                        state.scroll_y = state.scroll_y.saturating_sub(3);
+                    }
+                    _ => {}
+                },
+                CEvent::Resize(_, _) => {}
+                _ => {}
             }
         }
     }
-
-    Ok(())
 }
 
 fn handle_permission_key(
