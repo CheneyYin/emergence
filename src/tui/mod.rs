@@ -20,7 +20,7 @@ pub mod widgets;
 
 /// TUI 状态
 pub struct TuiState {
-    pub messages: Vec<RenderedMessage>,
+    pub turns: Vec<Turn>,
     pub status_text: String,
     pub textarea: TextArea<'static>,
     pub show_permission_dialog: Option<PermissionDialogState>,
@@ -32,33 +32,43 @@ pub struct TuiState {
     pub follow_bottom: bool,
 }
 
+/// A conversation turn: one user message + the assistant response.
 #[derive(Debug, Clone)]
-pub enum RenderedMessage {
-    User {
-        timestamp: String,
-        content: String,
-    },
-    Assistant {
-        timestamp: String,
-        content: String,
-        thinking: Option<String>,
-        duration: Option<String>,
-        tokens: Option<u32>,
-    },
-    ToolCall {
-        tool: String,
-        params: String,
-        duration: Option<String>,
-    },
-    ToolResult {
-        output: String,
-    },
-    Thinking {
-        content: String,
-    },
-    Error {
-        message: String,
-    },
+pub struct Turn {
+    pub user: UserPart,
+    pub assistant: AssistantPart,
+    pub status: TurnStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct UserPart {
+    pub timestamp: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AssistantPart {
+    pub timestamp: String,
+    pub content: String,
+    pub thinking: String,
+    pub duration: Option<String>,
+    pub tokens: Option<u32>,
+    pub tool_blocks: Vec<ToolBlock>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolBlock {
+    pub tool: String,
+    pub params: String,
+    pub result: Option<String>,
+    pub duration: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TurnStatus {
+    InProgress,
+    Complete,
 }
 
 #[derive(Debug, Clone)]
@@ -81,7 +91,7 @@ pub async fn run(
     let mut terminal = Terminal::new(backend)?;
 
     let mut state = TuiState {
-        messages: Vec::new(),
+        turns: Vec::new(),
         status_text: "emergence · 启动中 · ✓ ready".into(),
         textarea: TextArea::default(),
         show_permission_dialog: None,
@@ -217,9 +227,21 @@ async fn handle_input_key(
                 }
                 state.history_index = None;
                 state.pending_input.clear();
-                state.messages.push(RenderedMessage::User {
-                    timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
-                    content: input.clone(),
+                state.turns.push(Turn {
+                    user: UserPart {
+                        timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
+                        content: input.clone(),
+                    },
+                    assistant: AssistantPart {
+                        timestamp: String::new(),
+                        content: String::new(),
+                        thinking: String::new(),
+                        duration: None,
+                        tokens: None,
+                        tool_blocks: Vec::new(),
+                        error: None,
+                    },
+                    status: TurnStatus::InProgress,
                 });
                 action_tx.send(Action::Submit(input))?;
                 state.status_text = "emergence · 处理中 · ⏳ streaming".into();
@@ -310,7 +332,7 @@ pub(crate) mod tests {
     #[test]
     fn test_tui_state_construction() {
         let state = TuiState {
-            messages: vec![],
+            turns: vec![],
             status_text: "ready".into(),
             textarea: TextArea::default(),
             show_permission_dialog: None,
@@ -321,30 +343,54 @@ pub(crate) mod tests {
             scroll_y: 0,
             follow_bottom: true,
         };
-        assert!(state.messages.is_empty());
+        assert!(state.turns.is_empty());
         assert_eq!(state.status_text, "ready");
     }
 
-    /// Verifies that RenderedMessage variants can be constructed and debugged.
+    /// Verifies that Turn and its sub-structs can be constructed and debugged.
     #[test]
-    fn test_rendered_message_variants() {
-        let user = RenderedMessage::User {
-            timestamp: "12:00".into(),
-            content: "hi".into(),
+    fn test_turn_structure() {
+        let turn = Turn {
+            user: UserPart {
+                timestamp: "12:00".into(),
+                content: "hi".into(),
+            },
+            assistant: AssistantPart {
+                timestamp: "12:01".into(),
+                content: "Hello!".into(),
+                thinking: String::new(),
+                duration: None,
+                tokens: None,
+                tool_blocks: vec![],
+                error: None,
+            },
+            status: TurnStatus::Complete,
         };
-        assert!(format!("{:?}", user).contains("User"));
-
-        let err = RenderedMessage::Error {
-            message: "oops".into(),
-        };
-        assert!(format!("{:?}", err).contains("Error"));
+        assert!(format!("{:?}", turn).contains("Turn"));
+        assert_eq!(turn.user.content, "hi");
     }
 
-    /// Verifies that handle_app_event processes TextDelta by updating the last assistant message or creating one.
+    /// Verifies that handle_app_event processes TextDelta by updating the last turn's assistant content.
     #[test]
     fn test_handle_text_delta() {
+        let base_turn = Turn {
+            user: UserPart {
+                timestamp: "".into(),
+                content: "hi".into(),
+            },
+            assistant: AssistantPart {
+                timestamp: String::new(),
+                content: String::new(),
+                thinking: String::new(),
+                duration: None,
+                tokens: None,
+                tool_blocks: vec![],
+                error: None,
+            },
+            status: TurnStatus::InProgress,
+        };
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![base_turn],
             status_text: "".into(),
             textarea: TextArea::default(),
             show_permission_dialog: None,
@@ -361,14 +407,30 @@ pub(crate) mod tests {
         };
         handle_app_event(event, &mut state).unwrap();
         assert!(state.streaming);
-        assert_eq!(state.messages.len(), 1);
+        assert_eq!(state.turns[0].assistant.content, "Hello");
     }
 
-    /// Verifies that handle_app_event processes ThinkingDelta by appending a Thinking message.
+    /// Verifies that handle_app_event processes ThinkingDelta by appending to thinking field.
     #[test]
     fn test_handle_thinking_delta() {
+        let base_turn = Turn {
+            user: UserPart {
+                timestamp: "".into(),
+                content: "hi".into(),
+            },
+            assistant: AssistantPart {
+                timestamp: String::new(),
+                content: String::new(),
+                thinking: String::new(),
+                duration: None,
+                tokens: None,
+                tool_blocks: vec![],
+                error: None,
+            },
+            status: TurnStatus::InProgress,
+        };
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![base_turn],
             status_text: "".into(),
             textarea: TextArea::default(),
             show_permission_dialog: None,
@@ -383,17 +445,14 @@ pub(crate) mod tests {
             content: "thinking...".into(),
         };
         handle_app_event(event, &mut state).unwrap();
-        assert!(matches!(
-            state.messages.last(),
-            Some(RenderedMessage::Thinking { .. })
-        ));
+        assert_eq!(state.turns[0].assistant.thinking, "thinking...");
     }
 
     /// Verifies that handle_app_event processes ToolRequest by setting the permission dialog.
     #[test]
     fn test_handle_tool_request() {
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![],
             status_text: "".into(),
             textarea: TextArea::default(),
             show_permission_dialog: None,
@@ -421,7 +480,7 @@ pub(crate) mod tests {
     #[test]
     fn test_handle_agent_done() {
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![],
             status_text: "".into(),
             textarea: TextArea::default(),
             show_permission_dialog: None,
@@ -443,8 +502,24 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes Error by appending an Error message.
     #[test]
     fn test_handle_error() {
+        let base_turn = Turn {
+            user: UserPart {
+                timestamp: "".into(),
+                content: "".into(),
+            },
+            assistant: AssistantPart {
+                timestamp: String::new(),
+                content: String::new(),
+                thinking: String::new(),
+                duration: None,
+                tokens: None,
+                tool_blocks: vec![],
+                error: None,
+            },
+            status: TurnStatus::InProgress,
+        };
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![base_turn],
             status_text: "".into(),
             textarea: TextArea::default(),
             show_permission_dialog: None,
@@ -459,10 +534,7 @@ pub(crate) mod tests {
             message: "failed".into(),
         };
         handle_app_event(event, &mut state).unwrap();
-        assert!(matches!(
-            state.messages.last(),
-            Some(RenderedMessage::Error { .. })
-        ));
+        assert_eq!(state.turns[0].assistant.error.as_deref(), Some("failed"));
     }
 
     /// Verifies that handle_permission_key with 'a' sends ApproveOnce and clears dialog.
@@ -470,7 +542,7 @@ pub(crate) mod tests {
     fn test_permission_key_approve_once() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![],
             status_text: "".into(),
             textarea: TextArea::default(),
             show_permission_dialog: Some(PermissionDialogState {
@@ -495,8 +567,24 @@ pub(crate) mod tests {
     /// Verifies that handle_app_event processes ToolResult by pushing ToolCall and ToolResult messages.
     #[test]
     fn test_handle_tool_result() {
+        let base_turn = Turn {
+            user: UserPart {
+                timestamp: "".into(),
+                content: "hi".into(),
+            },
+            assistant: AssistantPart {
+                timestamp: String::new(),
+                content: String::new(),
+                thinking: String::new(),
+                duration: None,
+                tokens: None,
+                tool_blocks: vec![],
+                error: None,
+            },
+            status: TurnStatus::InProgress,
+        };
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![base_turn],
             status_text: "".into(),
             textarea: TextArea::default(),
             show_permission_dialog: None,
@@ -515,22 +603,16 @@ pub(crate) mod tests {
             metadata: None,
         };
         handle_app_event(event, &mut state).unwrap();
-        assert_eq!(state.messages.len(), 2);
-        assert!(matches!(
-            state.messages[0],
-            RenderedMessage::ToolCall { .. }
-        ));
-        assert!(matches!(
-            state.messages[1],
-            RenderedMessage::ToolResult { .. }
-        ));
+        assert_eq!(state.turns.len(), 1);
+        assert_eq!(state.turns[0].assistant.tool_blocks.len(), 1);
+        assert_eq!(state.turns[0].assistant.tool_blocks[0].tool, "read");
     }
 
     /// Verifies that handle_app_event processes StatusUpdate by setting the status text.
     #[test]
     fn test_handle_status_update() {
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![],
             status_text: "".into(),
             textarea: TextArea::default(),
             show_permission_dialog: None,
@@ -556,7 +638,7 @@ pub(crate) mod tests {
         let mut textarea = TextArea::new(vec!["hello".to_string()]);
         textarea.move_cursor(tui_textarea::CursorMove::End);
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![],
             status_text: "ready".into(),
             textarea,
             show_permission_dialog: None,
@@ -584,7 +666,7 @@ pub(crate) mod tests {
     #[test]
     fn test_render_input_textarea_empty() {
         let mut state = TuiState {
-            messages: vec![],
+            turns: vec![],
             status_text: "ready".into(),
             textarea: TextArea::default(),
             show_permission_dialog: None,
@@ -613,31 +695,16 @@ fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()>
             finish_reason: _,
         } => {
             state.streaming = true;
-            if let Some(RenderedMessage::Assistant {
-                content: ref mut existing,
-                ..
-            }) = state.messages.last_mut()
-            {
-                existing.push_str(&content);
-            } else {
-                state.messages.push(RenderedMessage::Assistant {
-                    timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
-                    content,
-                    thinking: None,
-                    duration: None,
-                    tokens: None,
-                });
+            if let Some(turn) = state.turns.last_mut() {
+                if turn.assistant.timestamp.is_empty() {
+                    turn.assistant.timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
+                }
+                turn.assistant.content.push_str(&content);
             }
         }
         AppEvent::ThinkingDelta { content } => {
-            // 累积到上一条 thinking 消息，避免每个 token 一行
-            if let Some(RenderedMessage::Thinking {
-                content: ref mut existing,
-            }) = state.messages.last_mut()
-            {
-                existing.push_str(&content);
-            } else {
-                state.messages.push(RenderedMessage::Thinking { content });
+            if let Some(turn) = state.turns.last_mut() {
+                turn.assistant.thinking.push_str(&content);
             }
         }
         AppEvent::ToolRequest {
@@ -660,23 +727,33 @@ fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()>
             output,
             metadata: _,
         } => {
-            state.messages.push(RenderedMessage::ToolCall {
-                tool: name,
-                params: serde_json::to_string_pretty(&params).unwrap_or_default(),
-                duration: None,
-            });
-            state.messages.push(RenderedMessage::ToolResult { output });
+            if let Some(turn) = state.turns.last_mut() {
+                turn.assistant.tool_blocks.push(ToolBlock {
+                    tool: name,
+                    params: serde_json::to_string_pretty(&params).unwrap_or_default(),
+                    result: Some(output),
+                    duration: None,
+                });
+            }
         }
         AppEvent::StatusUpdate { tokens, model } => {
             state.status_text = format!("emergence · {} · {} tokens · ⏳ streaming", model, tokens);
+            if let Some(turn) = state.turns.last_mut() {
+                turn.assistant.tokens = Some(tokens);
+            }
         }
         AppEvent::AgentDone { stop_reason } => {
             state.streaming = false;
             state.follow_bottom = true;
+            if let Some(turn) = state.turns.last_mut() {
+                turn.status = TurnStatus::Complete;
+            }
             state.status_text = format!("emergence · ✓ ready ({:?})", stop_reason);
         }
         AppEvent::Error { message } => {
-            state.messages.push(RenderedMessage::Error { message });
+            if let Some(turn) = state.turns.last_mut() {
+                turn.assistant.error = Some(message);
+            }
         }
     }
     Ok(())

@@ -1,5 +1,5 @@
 use super::themes;
-use super::{RenderedMessage, TuiState};
+use super::{TuiState, Turn, TurnStatus};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -21,100 +21,10 @@ pub fn render(f: &mut Frame, state: &super::TuiState) {
 fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
     let mut lines: Vec<Line> = Vec::new();
 
-    for msg in &state.messages {
-        match msg {
-            RenderedMessage::User { timestamp, content } => {
-                let content_lines: Vec<&str> = content.lines().collect();
-                for (i, line_content) in content_lines.iter().enumerate() {
-                    if i == 0 {
-                        lines.push(Line::from(vec![
-                            Span::styled(format!("[{}] You: ", timestamp), themes::dim_style()),
-                            Span::styled(*line_content, themes::user_style()),
-                        ]));
-                    } else {
-                        lines.push(Line::from(vec![Span::styled(
-                            *line_content,
-                            themes::user_style(),
-                        )]));
-                    }
-                }
-            }
-            RenderedMessage::Assistant {
-                timestamp,
-                content,
-                thinking,
-                duration,
-                tokens,
-            } => {
-                if let Some(t) = thinking {
-                    let think_lines: Vec<Line> = t
-                        .lines()
-                        .map(|l| Line::from(vec![Span::styled(l, themes::thinking_style())]))
-                        .collect();
-                    lines.extend(think_lines);
-                }
-                let mut prefix = format!("[{}] 🤖", timestamp);
-                if let Some(d) = duration {
-                    prefix.push_str(&format!(" ({})", d));
-                }
-                if let Some(tok) = tokens {
-                    prefix.push_str(&format!(" {} tokens", tok));
-                }
-                let md_lines = super::markdown::render_markdown(content);
-                if md_lines.is_empty() {
-                    lines.push(Line::from(vec![Span::styled(prefix, themes::dim_style())]));
-                } else {
-                    let mut first_spans =
-                        vec![Span::styled(format!("{} ", &prefix), themes::dim_style())];
-                    first_spans.extend(md_lines[0].spans.clone());
-                    lines.push(Line::from(first_spans));
-                    for md_line in &md_lines[1..] {
-                        lines.push(md_line.clone());
-                    }
-                }
-            }
-            RenderedMessage::ToolCall {
-                tool,
-                params,
-                duration,
-            } => {
-                let mut prefix = format!("tool:{}", tool);
-                if let Some(d) = duration {
-                    prefix.push_str(&format!(" ({})", d));
-                }
-                lines.push(Line::from(vec![Span::styled(
-                    format!("{}: {}", prefix, params),
-                    themes::tool_style(),
-                )]));
-            }
-            RenderedMessage::ToolResult { output } => {
-                let truncated: Vec<&str> = output.lines().take(20).collect();
-                lines.push(Line::from(vec![Span::styled("┌", themes::tool_style())]));
-                for line_content in &truncated {
-                    lines.push(Line::from(vec![Span::styled(
-                        format!("│ {}", line_content),
-                        themes::tool_style(),
-                    )]));
-                }
-                lines.push(Line::from(vec![Span::styled("└", themes::tool_style())]));
-            }
-            RenderedMessage::Thinking { content } => {
-                let think_lines: Vec<Line> = content
-                    .lines()
-                    .map(|l| Line::from(vec![Span::styled(l, themes::thinking_style())]))
-                    .collect();
-                lines.extend(think_lines);
-            }
-            RenderedMessage::Error { message } => {
-                lines.push(Line::from(vec![Span::styled(
-                    format!("⚠ {}", message),
-                    themes::error_style(),
-                )]));
-            }
-        }
+    for turn in &state.turns {
+        render_turn(&mut lines, turn);
     }
 
-    // 精确折行计数：每行的展示宽度 / 列宽，向上取整
     let col_width = (area.width as usize).max(1);
     let total_visual_lines: usize = lines
         .iter()
@@ -138,6 +48,80 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
         .scroll((scroll_offset, 0));
 
     f.render_widget(paragraph, area);
+}
+
+fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
+    let dim = themes::dim_style();
+    let border = Style::default().fg(Color::DarkGray);
+
+    // ── User ──
+    lines.push(Line::from(vec![
+        Span::styled(format!("[{}] You: ", turn.user.timestamp), dim),
+        Span::styled(&turn.user.content, themes::user_style()),
+    ]));
+
+    // ── Assistant header ──
+    let mut header = format!("[{}] 🤖", turn.assistant.timestamp);
+    if let Some(ref d) = turn.assistant.duration {
+        header.push_str(&format!(" · {}", d));
+    }
+    if let Some(tok) = turn.assistant.tokens {
+        header.push_str(&format!(" · {} tokens", tok));
+    }
+    if turn.status == TurnStatus::InProgress {
+        header.push_str(" · ⏳");
+    }
+    lines.push(Line::from(vec![Span::styled(header, dim)]));
+
+    // ── Thinking ──
+    if !turn.assistant.thinking.is_empty() {
+        // Push thinking as a header line + content lines
+        for think_line in turn.assistant.thinking.lines() {
+            lines.push(Line::from(vec![Span::styled(
+                think_line,
+                themes::thinking_style(),
+            )]));
+        }
+    }
+
+    // ── Body (markdown) ──
+    if !turn.assistant.content.is_empty() {
+        let md_lines = super::markdown::render_markdown(&turn.assistant.content);
+        for md_line in md_lines {
+            lines.push(md_line);
+        }
+    }
+
+    // ── Tool blocks ──
+    for tb in &turn.assistant.tool_blocks {
+        lines.push(Line::from(vec![Span::styled(
+            format!("┌ tool:{} {}", tb.tool, tb.params),
+            themes::tool_style(),
+        )]));
+        if let Some(ref result) = tb.result {
+            for rline in result.lines().take(20) {
+                lines.push(Line::from(vec![Span::styled(
+                    format!("│ {}", rline),
+                    themes::tool_style(),
+                )]));
+            }
+        }
+        lines.push(Line::from(vec![Span::styled("└", themes::tool_style())]));
+    }
+
+    // ── Error ──
+    if let Some(ref err) = turn.assistant.error {
+        lines.push(Line::from(vec![Span::styled(
+            format!("⚠ {}", err),
+            themes::error_style(),
+        )]));
+    }
+
+    // ── Turn separator ──
+    lines.push(Line::from(vec![Span::styled(
+        "\u{2500}".repeat(60),
+        border,
+    )]));
 }
 
 fn render_status_bar(f: &mut Frame, area: Rect, state: &TuiState) {
