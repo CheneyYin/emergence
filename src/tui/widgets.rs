@@ -75,8 +75,13 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
 
     // ── Tool blocks ──
     for tb in &turn.assistant.tool_blocks {
+        let dot = if tb.ok {
+            Span::styled("  ● ", Style::default().fg(Color::Green))
+        } else {
+            Span::styled("  ● ", themes::error_style())
+        };
         lines.push(Line::from(vec![
-            Span::styled("  * ", dim),
+            dot,
             Span::styled(format!("{}({})", tb.tool, tb.summary), themes::tool_style()),
         ]));
         if let Some(ref result) = tb.result {
@@ -115,10 +120,8 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
         } else {
             format!("Thinking ({} tokens)", tt)
         };
-        lines.push(Line::from(vec![
-            Span::styled("  * ", dim),
-            Span::styled(text, style),
-        ]));
+        let dot = Span::styled("  ● ", style);
+        lines.push(Line::from(vec![dot, Span::styled(text, style)]));
     }
 
     // ── Error ──

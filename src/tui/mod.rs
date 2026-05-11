@@ -63,6 +63,7 @@ pub struct ToolBlock {
     pub summary: String,
     pub result: Option<String>,
     pub duration: Option<String>,
+    pub ok: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -841,6 +842,7 @@ fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()>
                     tool: name,
                     result: Some(output),
                     duration: None,
+                    ok: true,
                 });
             }
         }
