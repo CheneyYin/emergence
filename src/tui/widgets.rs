@@ -73,34 +73,23 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
     }
     lines.push(Line::from(vec![Span::styled(header, dim)]));
 
-    // ── Thinking ──
-    if !turn.assistant.thinking.is_empty() {
-        for think_line in turn.assistant.thinking.lines() {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(think_line, themes::thinking_style()),
-            ]));
-        }
-    }
-
-    // ── Tool blocks (before body, Claude Code style) ──
+    // ── Tool blocks ──
     for tb in &turn.assistant.tool_blocks {
         lines.push(Line::from(vec![
-            Span::styled("  ● ", themes::dim_style()),
+            Span::styled("  ● ", dim),
             Span::styled(format!("{}({})", tb.tool, tb.summary), themes::tool_style()),
         ]));
         if let Some(ref result) = tb.result {
-            let mut result_lines = result.lines();
-            // First line gets └ prefix, rest are plain
-            if let Some(first) = result_lines.next() {
+            let mut rlines = result.lines();
+            if let Some(first) = rlines.next() {
                 lines.push(Line::from(vec![Span::styled(
                     format!("  └ {}", first),
-                    themes::dim_style(),
+                    dim,
                 )]));
-                for rline in result_lines.take(19) {
+                for rline in rlines.take(19) {
                     lines.push(Line::from(vec![Span::styled(
                         format!("    {}", rline),
-                        themes::dim_style(),
+                        dim,
                     )]));
                 }
             }
@@ -115,6 +104,19 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
             spans.extend(md_line.spans);
             lines.push(Line::from(spans));
         }
+    }
+
+    // ── Thinking (compact one-liner after body) ──
+    if let Some(tt) = turn.assistant.thinking_tokens {
+        let style = if turn.status == super::TurnStatus::Complete {
+            dim // dimmed when done
+        } else {
+            themes::thinking_style()
+        };
+        lines.push(Line::from(vec![
+            Span::styled("  ● ", dim),
+            Span::styled(format!("Thinking ({} tokens)", tt), style),
+        ]));
     }
 
     // ── Error ──

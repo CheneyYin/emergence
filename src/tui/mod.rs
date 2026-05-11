@@ -50,7 +50,7 @@ pub struct UserPart {
 pub struct AssistantPart {
     pub timestamp: String,
     pub content: String,
-    pub thinking: String,
+    pub thinking_tokens: Option<u32>,
     pub duration: Option<String>,
     pub tokens: Option<u32>,
     pub tool_blocks: Vec<ToolBlock>,
@@ -235,7 +235,7 @@ async fn handle_input_key(
                     assistant: AssistantPart {
                         timestamp: String::new(),
                         content: String::new(),
-                        thinking: String::new(),
+                        thinking_tokens: None,
                         duration: None,
                         tokens: None,
                         tool_blocks: Vec::new(),
@@ -358,7 +358,7 @@ pub(crate) mod tests {
             assistant: AssistantPart {
                 timestamp: "12:01".into(),
                 content: "Hello!".into(),
-                thinking: String::new(),
+                thinking_tokens: None,
                 duration: None,
                 tokens: None,
                 tool_blocks: vec![],
@@ -381,7 +381,7 @@ pub(crate) mod tests {
             assistant: AssistantPart {
                 timestamp: String::new(),
                 content: String::new(),
-                thinking: String::new(),
+                thinking_tokens: None,
                 duration: None,
                 tokens: None,
                 tool_blocks: vec![],
@@ -421,7 +421,7 @@ pub(crate) mod tests {
             assistant: AssistantPart {
                 timestamp: String::new(),
                 content: String::new(),
-                thinking: String::new(),
+                thinking_tokens: None,
                 duration: None,
                 tokens: None,
                 tool_blocks: vec![],
@@ -445,7 +445,7 @@ pub(crate) mod tests {
             content: "thinking...".into(),
         };
         handle_app_event(event, &mut state).unwrap();
-        assert_eq!(state.turns[0].assistant.thinking, "thinking...");
+        assert_eq!(state.turns[0].assistant.thinking_tokens, Some(1));
     }
 
     /// Verifies that handle_app_event processes ToolRequest by setting the permission dialog.
@@ -510,7 +510,7 @@ pub(crate) mod tests {
             assistant: AssistantPart {
                 timestamp: String::new(),
                 content: String::new(),
-                thinking: String::new(),
+                thinking_tokens: None,
                 duration: None,
                 tokens: None,
                 tool_blocks: vec![],
@@ -575,7 +575,7 @@ pub(crate) mod tests {
             assistant: AssistantPart {
                 timestamp: String::new(),
                 content: String::new(),
-                thinking: String::new(),
+                thinking_tokens: None,
                 duration: None,
                 tokens: None,
                 tool_blocks: vec![],
@@ -809,9 +809,10 @@ fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()>
                 turn.assistant.content.push_str(&content);
             }
         }
-        AppEvent::ThinkingDelta { content } => {
+        AppEvent::ThinkingDelta { content: _ } => {
             if let Some(turn) = state.turns.last_mut() {
-                turn.assistant.thinking.push_str(&content);
+                let count = turn.assistant.thinking_tokens.unwrap_or(0);
+                turn.assistant.thinking_tokens = Some(count + 1);
             }
         }
         AppEvent::ToolRequest {
