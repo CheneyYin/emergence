@@ -60,7 +60,7 @@ pub struct AssistantPart {
 #[derive(Debug, Clone)]
 pub struct ToolBlock {
     pub tool: String,
-    pub params: String,
+    pub summary: String,
     pub result: Option<String>,
     pub duration: Option<String>,
 }
@@ -686,6 +686,113 @@ pub(crate) mod tests {
         let buffer = terminal.backend().buffer();
         assert!(buffer.area.width > 0);
     }
+
+    // ── tool_summary tests ──
+
+    /// Verifies bash tool uses description field from params.
+    #[test]
+    fn test_tool_summary_bash_description() {
+        let summary = tool_summary("bash", &serde_json::json!({"description": "install deps"}));
+        assert_eq!(summary, "install deps");
+    }
+
+    /// Verifies bash falls back to command when description is missing.
+    #[test]
+    fn test_tool_summary_bash_command_fallback() {
+        let summary = tool_summary("bash", &serde_json::json!({"command": "npm install"}));
+        assert_eq!(summary, "npm install");
+    }
+
+    /// Verifies read tool shows basename of file_path.
+    #[test]
+    fn test_tool_summary_read_basename() {
+        let summary = tool_summary(
+            "read",
+            &serde_json::json!({"file_path": "/home/user/src/app.rs"}),
+        );
+        assert_eq!(summary, "app.rs");
+    }
+
+    /// Verifies grep tool shows pattern truncated.
+    #[test]
+    fn test_tool_summary_grep_pattern() {
+        let summary = tool_summary("grep", &serde_json::json!({"pattern": "async fn"}));
+        assert_eq!(summary, "async fn");
+    }
+
+    /// Verifies long strings are truncated with ellipsis.
+    #[test]
+    fn test_tool_summary_truncation() {
+        let long = "a".repeat(100);
+        let summary = tool_summary("bash", &serde_json::json!({"command": &long}));
+        assert_eq!(summary.len(), 63); // 60 chars + '…' (3 bytes)
+        assert!(summary.ends_with('…'));
+    }
+
+    /// Verifies unknown tool returns a placeholder.
+    #[test]
+    fn test_tool_summary_unknown_tool() {
+        let summary = tool_summary("unknown", &serde_json::json!({"key": "val"}));
+        assert_eq!(summary, "val");
+    }
+}
+
+/// Generate a compact one-line summary for a tool call (Claude Code style).
+fn tool_summary(tool: &str, params: &serde_json::Value) -> String {
+    let trunc = |s: &str, max: usize| -> String {
+        if s.len() > max {
+            format!("{}…", &s[..max])
+        } else {
+            s.to_string()
+        }
+    };
+
+    match tool {
+        "bash" => params
+            .get("description")
+            .and_then(|v| v.as_str())
+            .or_else(|| params.get("command").and_then(|v| v.as_str()))
+            .map(|s| trunc(s, 60))
+            .unwrap_or_else(|| "…".into()),
+        "read" | "write" | "edit" => params
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(|p| {
+                std::path::Path::new(p)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(p)
+                    .to_string()
+            })
+            .unwrap_or_else(|| "…".into()),
+        "grep" | "glob" => params
+            .get("pattern")
+            .and_then(|v| v.as_str())
+            .map(|s| trunc(s, 60))
+            .unwrap_or_else(|| "…".into()),
+        "web_search" => params
+            .get("query")
+            .and_then(|v| v.as_str())
+            .map(|s| trunc(s, 60))
+            .unwrap_or_else(|| "…".into()),
+        "web_fetch" => params
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(|s| trunc(s, 60))
+            .unwrap_or_else(|| "…".into()),
+        _ => {
+            // Generic: show first string value or "…"
+            if let Some(obj) = params.as_object() {
+                obj.values()
+                    .filter_map(|v| v.as_str())
+                    .next()
+                    .map(|s| trunc(s, 40))
+                    .unwrap_or_else(|| "…".into())
+            } else {
+                "…".into()
+            }
+        }
+    }
 }
 
 fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()> {
@@ -729,8 +836,8 @@ fn handle_app_event(event: AppEvent, state: &mut TuiState) -> anyhow::Result<()>
         } => {
             if let Some(turn) = state.turns.last_mut() {
                 turn.assistant.tool_blocks.push(ToolBlock {
+                    summary: tool_summary(&name, &params),
                     tool: name,
-                    params: serde_json::to_string_pretty(&params).unwrap_or_default(),
                     result: Some(output),
                     duration: None,
                 });

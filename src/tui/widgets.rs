@@ -92,21 +92,20 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
         }
     }
 
-    // ── Tool blocks ──
+    // ── Tool blocks (Claude Code style) ──
     for tb in &turn.assistant.tool_blocks {
-        lines.push(Line::from(vec![Span::styled(
-            format!("┌ tool:{} {}", tb.tool, tb.params),
-            themes::tool_style(),
-        )]));
+        lines.push(Line::from(vec![
+            Span::styled("  ● ", themes::dim_style()),
+            Span::styled(format!("{}({})", tb.tool, tb.summary), themes::tool_style()),
+        ]));
         if let Some(ref result) = tb.result {
             for rline in result.lines().take(20) {
                 lines.push(Line::from(vec![Span::styled(
-                    format!("│ {}", rline),
-                    themes::tool_style(),
+                    format!("  └ {}", rline),
+                    themes::dim_style(),
                 )]));
             }
         }
-        lines.push(Line::from(vec![Span::styled("└", themes::tool_style())]));
     }
 
     // ── Error ──
