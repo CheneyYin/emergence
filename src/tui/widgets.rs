@@ -100,7 +100,7 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
     if !turn.assistant.content.is_empty() {
         let md_lines = super::markdown::render_markdown(&turn.assistant.content);
         for md_line in md_lines {
-            let mut spans = vec![Span::raw("  ")];
+            let mut spans = vec![Span::raw("    ")];
             spans.extend(md_line.spans);
             lines.push(Line::from(spans));
         }
