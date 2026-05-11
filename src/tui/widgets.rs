@@ -108,14 +108,16 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
 
     // ── Thinking (compact one-liner after body) ──
     if let Some(tt) = turn.assistant.thinking_tokens {
-        let style = if turn.status == super::TurnStatus::Complete {
-            dim // dimmed when done
+        let done = turn.status == super::TurnStatus::Complete;
+        let style = if done { dim } else { themes::thinking_style() };
+        let text: String = if done {
+            "Thinking (Finish)".into()
         } else {
-            themes::thinking_style()
+            format!("Thinking ({} tokens)", tt)
         };
         lines.push(Line::from(vec![
             Span::styled("  ● ", dim),
-            Span::styled(format!("Thinking ({} tokens)", tt), style),
+            Span::styled(text, style),
         ]));
     }
 
