@@ -75,12 +75,11 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
 
     // ── Thinking ──
     if !turn.assistant.thinking.is_empty() {
-        // Push thinking as a header line + content lines
         for think_line in turn.assistant.thinking.lines() {
-            lines.push(Line::from(vec![Span::styled(
-                think_line,
-                themes::thinking_style(),
-            )]));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(think_line, themes::thinking_style()),
+            ]));
         }
     }
 
@@ -112,7 +111,9 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
     if !turn.assistant.content.is_empty() {
         let md_lines = super::markdown::render_markdown(&turn.assistant.content);
         for md_line in md_lines {
-            lines.push(md_line);
+            let mut spans = vec![Span::raw("  ")];
+            spans.extend(md_line.spans);
+            lines.push(Line::from(spans));
         }
     }
 
