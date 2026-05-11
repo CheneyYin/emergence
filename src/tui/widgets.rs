@@ -2,7 +2,6 @@ use super::themes;
 use super::{RenderedMessage, TuiState};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use unicode_width::UnicodeWidthStr;
 
 pub fn render(f: &mut Frame, state: &super::TuiState) {
     let layout = Layout::default()
@@ -147,13 +146,18 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &TuiState) {
 }
 
 fn render_input_box(f: &mut Frame, area: Rect, state: &TuiState) {
-    let input = Paragraph::new(format!("> {}", state.input_buffer))
-        .block(Block::default().borders(Borders::TOP))
-        .style(Style::default().fg(Color::White));
-    f.render_widget(input, area);
-    let display_width = state.input_buffer[..state.cursor_pos].width() as u16;
+    let block = Block::default().borders(Borders::TOP);
+    let inner = block.inner(area);
+    let [prompt_area, text_area] =
+        Layout::horizontal([Constraint::Length(2), Constraint::Min(1)]).areas(inner);
+
+    f.render_widget(block, area);
+    f.render_widget(Paragraph::new("> ").fg(Color::White), prompt_area);
+    f.render_widget(&state.textarea, text_area);
+
+    let (row, col) = state.textarea.cursor();
     f.set_cursor_position(Position::new(
-        (2 + display_width).min(area.width.saturating_sub(1)),
-        area.y + 1,
+        text_area.x + col as u16,
+        text_area.y + row as u16,
     ));
 }
