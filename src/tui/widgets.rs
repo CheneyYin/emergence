@@ -154,10 +154,5 @@ fn render_input_box(f: &mut Frame, area: Rect, state: &TuiState) {
     f.render_widget(block, area);
     f.render_widget(Paragraph::new("> ").fg(Color::White), prompt_area);
     f.render_widget(&state.textarea, text_area);
-
-    let (row, col) = state.textarea.cursor();
-    f.set_cursor_position(Position::new(
-        text_area.x + col as u16,
-        text_area.y + row as u16,
-    ));
+    // TextArea renders its own visual cursor (REVERSED style) — no need for terminal cursor
 }

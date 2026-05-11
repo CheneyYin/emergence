@@ -552,14 +552,9 @@ pub(crate) mod tests {
 
     /// Verifies that rendering places the cursor in the input box after the prompt text.
     #[test]
-    fn test_render_input_cursor_position() {
+    fn test_render_input_textarea_content() {
         let mut textarea = TextArea::new(vec!["hello".to_string()]);
         textarea.move_cursor(tui_textarea::CursorMove::End);
-        assert_eq!(
-            textarea.cursor(),
-            (0, 5),
-            "cursor should be at end of 'hello'"
-        );
         let mut state = TuiState {
             messages: vec![],
             status_text: "ready".into(),
@@ -577,17 +572,17 @@ pub(crate) mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| widgets::render(f, &mut state)).unwrap();
 
-        // TextArea cursor is at (col=5, row=0).
-        // Input area layout[2] y=21, h=3; block inner y=22.
-        // Horizontal split: prompt(2) + textarea. Cursor: text_area.x + 5 = 2 + 5 = 7.
-        let cursor = terminal.backend_mut().get_cursor_position().unwrap();
-        assert_eq!(cursor.x, 7);
-        assert_eq!(cursor.y, 22);
+        let buffer = terminal.backend().buffer();
+        // Textarea text "hello" should appear in the input area (layout[2], inner y=22).
+        // prompt area is columns 0-1, textarea starts at column 2.
+        let input_row = &buffer[(2, 22)];
+        assert_eq!(input_row.symbol(), "h");
+        // No terminal cursor set (TextArea renders its own REVERSED visual cursor)
     }
 
-    /// Verifies cursor position works when textarea is empty.
+    /// Verifies the textarea widget renders even when empty.
     #[test]
-    fn test_render_input_cursor_position_empty() {
+    fn test_render_input_textarea_empty() {
         let mut state = TuiState {
             messages: vec![],
             status_text: "ready".into(),
@@ -605,10 +600,9 @@ pub(crate) mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| widgets::render(f, &mut state)).unwrap();
 
-        // Empty textarea: cursor at (0, 0). text_area.x = 2.
-        let cursor = terminal.backend_mut().get_cursor_position().unwrap();
-        assert_eq!(cursor.x, 2);
-        assert_eq!(cursor.y, 22);
+        // Should not panic
+        let buffer = terminal.backend().buffer();
+        assert!(buffer.area.width > 0);
     }
 }
 
