@@ -76,14 +76,14 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
     // ── Tool blocks ──
     for tb in &turn.assistant.tool_blocks {
         lines.push(Line::from(vec![
-            Span::styled("  ● ", dim),
+            Span::styled("  * ", dim),
             Span::styled(format!("{}({})", tb.tool, tb.summary), themes::tool_style()),
         ]));
         if let Some(ref result) = tb.result {
             let mut rlines = result.lines();
             if let Some(first) = rlines.next() {
                 lines.push(Line::from(vec![Span::styled(
-                    format!("  └ {}", first),
+                    format!("    {}", first),
                     dim,
                 )]));
                 for rline in rlines.take(19) {
@@ -116,7 +116,7 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
             format!("Thinking ({} tokens)", tt)
         };
         lines.push(Line::from(vec![
-            Span::styled("  ● ", dim),
+            Span::styled("  * ", dim),
             Span::styled(text, style),
         ]));
     }
