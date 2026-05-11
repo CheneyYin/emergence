@@ -2,7 +2,7 @@ name: Nightly
 
 on:
   schedule:
-    - cron: "37 3 * * *"   # 每天 03:37 UTC
+    - cron: "7 18 * * *"   # 每天 UTC+8 02:07 (= UTC 18:07)
   workflow_dispatch:        # 允许手动触发
 
 env:
