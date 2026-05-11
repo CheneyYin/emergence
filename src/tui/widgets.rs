@@ -52,7 +52,6 @@ fn render_chat_panel(f: &mut Frame, area: Rect, state: &TuiState) {
 
 fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
     let dim = themes::dim_style();
-    let border = Style::default().fg(Color::DarkGray);
 
     // ── User ──
     lines.push(Line::from(vec![
@@ -74,6 +73,7 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
     lines.push(Line::from(vec![Span::styled(header, dim)]));
 
     // ── Tool blocks ──
+    let has_tools = !turn.assistant.tool_blocks.is_empty();
     for tb in &turn.assistant.tool_blocks {
         let dot = if tb.ok {
             Span::styled("  ● ", Style::default().fg(Color::Green))
@@ -101,14 +101,23 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
         }
     }
 
+    if has_tools && !turn.assistant.content.is_empty() {
+        lines.push(Line::default());
+    }
+
     // ── Body (markdown) ──
-    if !turn.assistant.content.is_empty() {
+    let has_body = !turn.assistant.content.is_empty();
+    if has_body {
         let md_lines = super::markdown::render_markdown(&turn.assistant.content);
         for md_line in md_lines {
             let mut spans = vec![Span::raw("    ")];
             spans.extend(md_line.spans);
             lines.push(Line::from(spans));
         }
+    }
+
+    if (has_body || has_tools) && turn.assistant.thinking_tokens.is_some() {
+        lines.push(Line::default());
     }
 
     // ── Thinking (compact one-liner after body) ──
@@ -132,11 +141,8 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
         )]));
     }
 
-    // ── Turn separator ──
-    lines.push(Line::from(vec![Span::styled(
-        "\u{2500}".repeat(60),
-        border,
-    )]));
+    // blank line between turns
+    lines.push(Line::default());
 }
 
 fn render_status_bar(f: &mut Frame, area: Rect, state: &TuiState) {
