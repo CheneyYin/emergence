@@ -84,27 +84,35 @@ fn render_turn<'a>(lines: &mut Vec<Line<'a>>, turn: &'a Turn) {
         }
     }
 
-    // ── Body (markdown) ──
-    if !turn.assistant.content.is_empty() {
-        let md_lines = super::markdown::render_markdown(&turn.assistant.content);
-        for md_line in md_lines {
-            lines.push(md_line);
-        }
-    }
-
-    // ── Tool blocks (Claude Code style) ──
+    // ── Tool blocks (before body, Claude Code style) ──
     for tb in &turn.assistant.tool_blocks {
         lines.push(Line::from(vec![
             Span::styled("  ● ", themes::dim_style()),
             Span::styled(format!("{}({})", tb.tool, tb.summary), themes::tool_style()),
         ]));
         if let Some(ref result) = tb.result {
-            for rline in result.lines().take(20) {
+            let mut result_lines = result.lines();
+            // First line gets └ prefix, rest are plain
+            if let Some(first) = result_lines.next() {
                 lines.push(Line::from(vec![Span::styled(
-                    format!("  └ {}", rline),
+                    format!("  └ {}", first),
                     themes::dim_style(),
                 )]));
+                for rline in result_lines.take(19) {
+                    lines.push(Line::from(vec![Span::styled(
+                        format!("    {}", rline),
+                        themes::dim_style(),
+                    )]));
+                }
             }
+        }
+    }
+
+    // ── Body (markdown) ──
+    if !turn.assistant.content.is_empty() {
+        let md_lines = super::markdown::render_markdown(&turn.assistant.content);
+        for md_line in md_lines {
+            lines.push(md_line);
         }
     }
 
